@@ -1,6 +1,6 @@
 # UrbanSafe — Especificación del MVP
 
-> Estado: Borrador v0.1 · 2026-09-19
+> Estado: Borrador v0.2 · 2026-09-19
 > Contexto: MVP funcional desarrollado como proyecto de clase universitaria. Esta versión no se integra con plataformas de domicilios (Rappi, DiDi).
 
 ## 1. Visión
@@ -21,16 +21,41 @@
 ## 3. Módulos
 
 ### M1 — Ingesta de noticias
-- Consultar periódicamente noticias sobre hechos peligrosos en Bogotá (preferiblemente mediante feeds RSS en lugar de scraping de HTML).
-- Extraer de cada artículo: tipo de incidente, texto de ubicación, fecha/hora y relevancia (LLM con salida estructurada).
-- Geocodificar el texto de ubicación a coordenadas.
-- Descartar artículos irrelevantes o no geocodificables; deduplicar un mismo hecho publicado por varios medios.
+- Consultar cada 30–60 minutos feeds RSS sobre delitos en Bogotá (sin scraping de HTML):
+
+  | Fuente | Feed | Contenido |
+  |---|---|---|
+  | Google News RSS (principal) | `https://news.google.com/rss/search?q=<consulta>&hl=es-419&gl=CO&ceid=CO:es-419`, con las consultas definidas abajo | Título y fragmento; agrega medios sin RSS propio funcional (Caracol, RCN, El Espectador, Infobae) |
+  | El Tiempo — Bogotá | `https://www.eltiempo.com/rss/bogota.xml` | Resumen |
+  | Publimetro | `https://www.publimetro.co/arc/outboundfeeds/rss/` | Resumen y texto parcial |
+  | Semana | `https://www.semana.com/arc/outboundfeeds/rss/` | Resumen |
+  | KienyKe | `https://www.kienyke.com/feed` | Texto completo |
+
+- Consultas iniciales de Google News (se ajustan según los resultados reales):
+
+  | Consulta | Cubre |
+  |---|---|
+  | `hurto Bogotá` | Hurto a persona (amplia) |
+  | `robo celular Bogotá` | Hurto a persona |
+  | `robo de moto Bogotá` | Hurto de moto |
+  | `atraco Bogotá` | Atraco con arma |
+  | `riña Bogotá` | Riña |
+  | `domiciliario robo OR atraco Bogotá` | Hechos contra domiciliarios |
+
+  Usar el operador `when:1d` para limitar a noticias del último día, previa verificación de que el RSS lo respeta.
+
+- Extraer de cada artículo: tipo de delito, texto de ubicación, fecha/hora y relevancia (LLM con salida estructurada), a partir del título y el resumen disponibles en el feed.
+- Geocodificar el texto de ubicación a coordenadas. Si solo se identifica el barrio o la localidad, registrar el incidente como área con confianza reducida.
+- Descartar artículos irrelevantes, fuera de Bogotá o sin ubicación identificable.
+- Deduplicar obligatoriamente según RN-09: Google News repite noticias de los feeds directos y varios medios publican el mismo hecho.
 - Guardar el resultado como `Incidente` con fuente `noticias`.
 
 ### M2 — Datos abiertos oficiales
-- Importar periódicamente datasets oficiales de delitos en Bogotá (Policía / Secretaría Distrital de Seguridad).
-- Se usan como línea base histórica: qué zonas y franjas horarias son peligrosas.
-- La granularidad depende de cada dataset (localidad, UPZ, barrio); por confirmar en cada caso.
+- Fuente: **Delito de Alto Impacto Bogotá D.C.**, de la Secretaría Distrital de Seguridad, Convivencia y Justicia (https://datosabiertos.bogota.gov.co/dataset/delito-de-alto-impacto-bogota-d-c), en GeoJSON.
+- Granularidad: por localidad (2018–2024) y por UPZ (2018–2022), agregada por mes. No incluye hora del día ni coordenadas exactas.
+- Uso: riesgo base por zona (qué localidades y UPZ son históricamente más peligrosas). No aporta patrón horario.
+- Importación inicial y revisión mensual de actualizaciones.
+- **Limitación conocida:** ninguna fuente oficial disponible ofrece hora ni coordenadas exactas; la precisión espacial y el patrón horario dependen de las noticias (M1) y de los reportes comunitarios (M3).
 
 ### M3 — Reportes comunitarios
 - Un usuario reporta un incidente en dos pasos: tipo de incidente + ubicación.
@@ -72,14 +97,23 @@ Todas las fuentes terminan en la misma entidad, de modo que el mapa, el modelo d
 | Campo | Descripción |
 |---|---|
 | `id` | Identificador único |
-| `tipo` | Valor de catálogo: hurto, hurto de moto, riña, atraco, accidente, otro (catálogo por definir) |
-| `gravedad` | Escala numérica por tipo (por definir) |
+| `tipo` | Valor del catálogo de delitos (ver tabla siguiente) |
+| `gravedad` | 1–5, determinada por el tipo |
 | `ubicacion` | Punto (lat, lng), o área cuando la fuente solo indica una zona |
 | `ocurrido_en` | Cuándo ocurrió el hecho (mejor estimación) |
 | `reportado_en` | Cuándo entró al sistema |
-| `fuente` | `noticias` · `datos_abiertos` · `comunidad` |
-| `referencia_fuente` | URL del artículo, ID del dataset o usuario que reportó |
+| `fuentes` | Lista de pares (tipo de fuente, referencia). Tipo: `noticias` · `datos_abiertos` · `comunidad`; referencia: URL del artículo, ID del dataset o usuario que reportó. Es una lista porque un incidente puede consolidar varias fuentes (RN-09) |
 | `confianza` | 0–1, depende de la fuente y de la corroboración |
+
+### Catálogo de tipos de delito
+
+| Tipo | Gravedad (1–5) | Criterio |
+|---|---|---|
+| Hurto a persona (celular, pertenencias) | 3 | Pérdida económica sin arma |
+| Hurto de moto | 5 | El domiciliario pierde su herramienta de trabajo |
+| Atraco con arma | 5 | Riesgo para la integridad física |
+| Riña | 2 | Riesgo indirecto para quien pasa |
+| Otro | 1 | Hechos que no encajan en las categorías anteriores |
 
 ### Fuente de posición
 El sistema consume la posición del domiciliario desde una fuente abstracta. En el MVP la única fuente es la **ruta simulada**. El GPS real es una fuente futura que se conecta a la misma interfaz sin cambiar el resto del sistema.
@@ -100,11 +134,31 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   |---|---|
   | Horas | Alertas en tiempo real (M6) |
   | ~1 semana, con decaimiento | Riesgo de rutas (M4, M5) |
-  | Meses, por franja horaria | Riesgo base a partir de datos abiertos |
+  | Años, por zona | Riesgo base a partir de datos abiertos (M2) |
+  | Semanas, por franja horaria | Patrón horario a partir de noticias y reportes comunitarios |
 
-- **RN-06 · Peso de un incidente.** `peso = gravedad × confianza × e^(−antigüedad/τ)`, con τ ≈ 3 días (por ajustar). No hay corte abrupto; los incidentes de más de una semana tienen un peso despreciable.
+- **RN-06 · Peso de un incidente.** `peso = gravedad × confianza × e^(−antigüedad/τ)`, con τ ≈ 3 días (por ajustar). No hay corte abrupto; los incidentes de más de una semana tienen un peso despreciable. Los registros de datos abiertos no decaen: aportan un riesgo base constante por zona.
 - **RN-07 · Costo de ruta.** `costo(tramo) = tiempo_recorrido × (1 + α · riesgo(tramo, hora))`. Las tres opciones de ruta usan tres valores de α (0 para la más rápida).
 - **RN-08 · Sin reruteo automático.** El sistema sugiere una nueva ruta; el domiciliario decide.
+- **RN-09 · Deduplicación.**
+  - **Duplicado exacto:** misma URL de artículo (resolviendo la redirección de Google News) o título casi idéntico. Se descarta la copia.
+  - **Mismo hecho:** dos incidentes con el mismo tipo, a menos de 500 m entre sí (o con el punto dentro del área del otro) y con menos de 24 h de diferencia en `ocurrido_en` se fusionan en uno solo que conserva todas sus fuentes. La fusión aumenta la confianza del incidente.
+  - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo.
+
+### Parámetros iniciales
+
+Valores de partida; se ajustan con pruebas sobre rutas reales.
+
+| Parámetro | Valor | Efecto |
+|---|---|---|
+| τ (decaimiento, RN-06) | 3 días | Un incidente de hace 3 días pesa ~37 % de uno de hoy; uno de hace una semana, ~10 % |
+| Riesgo por tramo | Normalizado 0–1 | Da un significado estable a α |
+| α (RN-07): rápida / balanceada / segura | 0 / 1 / 5 | Un tramo de riesgo máximo cuesta 1×, 2× y 6× su tiempo de recorrido |
+| Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
+| Ventana de alertas (M6) | Últimas 6 h | Los incidentes más antiguos solo influyen en el ruteo |
+| Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
+| Confianza inicial | Noticias 0,7 · Comunidad 0,3 · Datos abiertos 1,0 | Los datos abiertos solo aportan riesgo base por zona, no alertas |
+| Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
 
 ## 6. Flujos principales
 
@@ -137,6 +191,9 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
 - Modelos predictivos con machine learning ("predictivo" significa patrones por zona y franja horaria).
 - Verificación de identidad o cuentas de usuario completas.
 - X/Twitter como fuente (API de pago).
+- Siniestros viales y cualquier riesgo que no sea un delito: el MVP se limita a delitos.
+- Datasets de la Policía Nacional en datos.gov.co: su granularidad es por municipio y no permite diferenciar zonas dentro de Bogotá.
+- Waze for Cities: requiere un aliado institucional.
 
 ## 8. Stack tecnológico
 
@@ -149,15 +206,12 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 | Tiempo real | WebSockets (Socket.IO) | Difusión inmediata de reportes y alertas a todos los mapas conectados |
 | Frontend | React + Vite + TypeScript; una app con dos rutas: `/domiciliario` (M7) y `/reportar` (M8) | Ambas vistas son aplicaciones interactivas centradas en el mapa |
 | Mapa | MapLibre GL JS | Open source, mapas vectoriales, sin costos de licencia |
-| Extracción de noticias | API de Claude con salida estructurada (Claude Haiku 4.5) | Extracción de tipo, ubicación y hora a JSON sin NLP propio |
+| Extracción de noticias | LLM con salida estructurada, detrás de un adaptador intercambiable (proveedor por definir) | Extracción de tipo, ubicación y hora a JSON sin NLP propio; el adaptador permite cambiar de proveedor sin afectar el resto del sistema |
 | Geocodificación | Google Geocoding API | Mejor manejo de direcciones colombianas que Nominatim |
 | Tareas programadas | node-cron dentro del backend | Suficiente para la frecuencia de ingesta del MVP |
 | Entorno local | Docker Compose (PostgreSQL/PostGIS + API) | Mismo entorno para todo el equipo con un comando |
 
 ## 9. Preguntas abiertas
 
-1. Feeds de noticias y datasets abiertos específicos, y su granularidad real.
-2. Catálogo de tipos de incidente y escala de gravedad.
-3. Valores de parámetros: τ, α por opción de ruta, radio de alerta, ventana de tiempo de alertas, límite de reportes.
-4. Criterios de deduplicación de un mismo hecho entre fuentes.
-5. Hosting para la demo.
+1. Hosting para la demo.
+2. Proveedor de LLM para la extracción de noticias (según costo y presupuesto del equipo).
