@@ -1,7 +1,5 @@
 # UrbanSafe — Especificación del MVP
 
-> Estado: Borrador v0.2 · 2026-09-19
-> Contexto: MVP funcional desarrollado como proyecto de clase universitaria. Esta versión no se integra con plataformas de domicilios (Rappi, DiDi).
 
 ## 1. Visión
 
