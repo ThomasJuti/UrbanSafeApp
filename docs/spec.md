@@ -209,7 +209,3 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 | Tareas programadas | node-cron dentro del backend | Suficiente para la frecuencia de ingesta del MVP |
 | Entorno local | Docker Compose (PostgreSQL/PostGIS + API) | Mismo entorno para todo el equipo con un comando |
 
-## 9. Preguntas abiertas
-
-1. Hosting para la demo.
-2. Proveedor de LLM para la extracción de noticias (según costo y presupuesto del equipo).
