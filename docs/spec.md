@@ -185,7 +185,6 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 
 - Integración con Rappi, DiDi o cualquier plataforma de domicilios.
 - GPS real y ubicación en segundo plano.
-- App móvil nativa publicada en tiendas.
 - Modelos predictivos con machine learning ("predictivo" significa patrones por zona y franja horaria).
 - Verificación de identidad o cuentas de usuario completas.
 - X/Twitter como fuente (API de pago).
