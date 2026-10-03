@@ -38,7 +38,7 @@ packages/
   shared/src/       # tipos y esquemas compartidos: Incidente, catálogo, parámetros, contratos, eventos
 db/
   migrations/       # SQL versionado
-  functions/        # funciones SQL de riesgo (RN-06, RN-07)
+  functions/        # funciones SQL de riesgo (RN-06, RN-07, RN-10, RN-11)
   seeds/            # datos de prueba
 scripts/            # importación de OSM y datos abiertos
 docs/spec.md
@@ -50,9 +50,9 @@ docs/spec.md
 |---|---|
 | `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación |
-| `open-data` | M2: riesgo base por localidad/UPZ |
-| `reports` | M3, RN-02, RN-04: reportes, confirmar/negar, reputación, límite |
-| `risk` | M4, RN-05, RN-06: puntaje de riesgo por tramo |
+| `open-data` | M2: `RiesgoBaseZona` por localidad |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad |
+| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa |
 | `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen |
@@ -89,7 +89,7 @@ Solo se crean los archivos que la feature necesita.
 
 ## Reglas de negocio no negociables
 
-- **RN-01:** toda fuente se normaliza a `Incidente` antes de usarse.
+- **RN-01:** toda fuente de hechos individuales (noticias, comunidad) se normaliza a `Incidente` antes de usarse. Los datos abiertos son la única excepción y se guardan como `RiesgoBaseZona`.
 - **RN-03, privacidad:**
   - La posición y la ruta de un domiciliario solo se emiten a **su propia sala** de Socket.IO.
   - Los incidentes van a una sala pública.
@@ -102,7 +102,7 @@ Solo se crean los archivos que la feature necesita.
 ## Base de datos
 
 - El cómputo geoespacial y de riesgo vive en PostGIS:
-  - RN-06 y RN-07 como funciones SQL en `db/functions`.
+  - RN-06, RN-07, RN-10 y RN-11 como funciones SQL en `db/functions`.
   - El riesgo por tramo se **precalcula** en una columna y se actualiza con incidentes nuevos; pgRouting no calcula el riesgo dentro del Dijkstra.
 - Para ruteo, recortar el grafo a una caja alrededor de origen y destino.
 - Coordenadas en SRID 4326; distancias con `geography` o en una proyección métrica.
@@ -148,7 +148,7 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 
 ### Alertas y simulación (M6, M7)
 - **Un único ticker global** avanza todas las sesiones de entrega. Prohibido un `setInterval` por usuario.
-- **Candidatos precalculados.** Al elegir una ruta se calcula una vez qué incidentes están cerca (300 m, ventana de 6 h). En cada tick se evalúan solo esos candidatos en memoria, sin consultar la base.
+- **Candidatos precalculados.** Al elegir una ruta se calcula una vez qué incidentes están cerca (300 m, ventana de alertas de M6). En cada tick se evalúan solo esos candidatos en memoria, sin consultar la base.
 - **Incidente nuevo:** se compara una vez contra las rutas activas (son ~30) y se agrega a los candidatos de las rutas afectadas.
 - **Posiciones a frecuencia limitada** (~1 Hz por sesión) y solo a la sala del domiciliario (RN-03).
 
