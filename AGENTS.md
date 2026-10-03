@@ -221,6 +221,3 @@ Si una feature no cumple su presupuesto, no se da por terminada.
    - qué presupuesto de tiempo le aplica.
 7. Agregar pruebas y actualizar la tabla de trazabilidad de este archivo.
 
-## Fuera de alcance (MVP)
-
-No implementar sin actualizar el spec: integración con plataformas de domicilios, GPS real, app nativa, modelos de ML, cuentas completas, X/Twitter, siniestros viales. Ver la sección 7 del spec.
