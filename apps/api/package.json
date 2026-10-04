@@ -1,0 +1,27 @@
+{
+  "name": "@urbansafe/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/app/server.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/app/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --exclude \"**/*.int.test.ts\"",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/app/run-seeds.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.3",
+    "@hono/zod-validator": "^0.9.1",
+    "@urbansafe/shared": "workspace:*",
+    "hono": "^4.13.13",
+    "kysely": "^0.29.6",
+    "pg": "^8.23.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}

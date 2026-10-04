@@ -21,6 +21,20 @@ UrbanSafe calcula rutas más seguras para domiciliarios en Bogotá combinando no
 - **Pruebas:** Vitest; integración contra PostGIS real en Supabase.
 - **Entorno de desarrollo:** API y web en local contra un proyecto de Supabase en la nube compartido por el equipo. Sin Docker.
 
+## Comandos
+
+Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.env` con la conexión del proyecto de Supabase.
+
+| Comando | Qué hace |
+|---|---|
+| `pnpm install` | Instala dependencias |
+| `pnpm db:migrate` | Aplica migraciones pendientes (dbmate) |
+| `pnpm db:new <nombre>` | Crea una migración nueva |
+| `pnpm db:seed` | Recarga los datos de prueba de `db/seeds` |
+| `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
+| `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
+| `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
+
 ## Estructura
 
 ```
@@ -206,7 +220,7 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 ## Pruebas
 
 - Unitarias junto al código (`*.test.ts`) para reglas puras: peso de incidentes, deduplicación, ajustes de confianza, límite de reportes.
-- Integración contra PostGIS + pgRouting real para el ruteo y las consultas espaciales. No simular PostGIS.
+- Integración contra PostGIS + pgRouting real para el ruteo y las consultas espaciales, en archivos `*.int.test.ts`. No simular PostGIS.
   - Se corren contra la base apuntada por `TEST_DATABASE_URL` (puede ser el proyecto de desarrollo).
   - Cada prueba corre dentro de una transacción que se revierte al final, para no dejar datos en la base compartida.
   - Las pruebas de concurrencia, que necesitan varias conexiones, usan datos con un marcador propio y los borran al terminar.
