@@ -6,20 +6,34 @@ Lineamientos para cualquier persona o agente que trabaje en este repo.
 
 UrbanSafe calcula rutas más seguras para domiciliarios en Bogotá combinando noticias, datos abiertos oficiales y reportes comunitarios, y alerta sobre incidentes durante el recorrido.
 
-**La fuente de verdad es [`docs/spec.md`](docs/spec.md).** Si el código y el spec no coinciden, gana el spec; si el spec está mal o incompleto, se corrige el spec en el mismo cambio.
+**La fuente de verdad es [`docs/spec.md`](docs/spec.md).** Si el código y el spec no coinciden, gana el spec; si el spec está mal o incompleto, se corrige el spec en el mismo cambio. El avance está en **Estado de implementación**, al inicio del spec: no reimplementar lo que figura como hecho, y actualizar esa sección en el mismo cambio.
 
 ## Stack
 
 - **Lenguaje:** TypeScript en todo el repo (modo `strict`, ESM).
 - **Monorepo:** pnpm workspaces.
-- **Base de datos:** PostgreSQL + PostGIS + pgRouting.
+- **Base de datos:** PostgreSQL + PostGIS + pgRouting en Supabase. Supabase se usa **solo como base de datos**: no se usan su Realtime, Auth, Edge Functions ni la API REST autogenerada.
 - **API:** Node.js + Hono; tiempo real con Socket.IO; tareas con node-cron.
 - **Web:** React + Vite + MapLibre GL JS.
 - **Acceso a datos:** Kysely (SQL tipado, PostGIS con `sql\`...\``). Sin ORM.
 - **Migraciones:** SQL puro (dbmate).
 - **Validación:** zod (esquemas en `packages/shared`).
-- **Pruebas:** Vitest; integración contra PostGIS real con Testcontainers.
-- **Entorno local:** Docker Compose.
+- **Pruebas:** Vitest; integración contra PostGIS real en Supabase.
+- **Entorno de desarrollo:** API y web en local contra un proyecto de Supabase en la nube compartido por el equipo. Sin Docker.
+
+## Comandos
+
+Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.env` con la conexión del proyecto de Supabase.
+
+| Comando | Qué hace |
+|---|---|
+| `pnpm install` | Instala dependencias |
+| `pnpm db:migrate` | Aplica migraciones pendientes (dbmate) |
+| `pnpm db:new <nombre>` | Crea una migración nueva |
+| `pnpm db:seed` | Recarga los datos de prueba de `db/seeds` |
+| `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
+| `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
+| `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
 
 ## Estructura
 
@@ -46,16 +60,16 @@ docs/spec.md
 
 ### Features del API y su trazabilidad con el spec
 
-| Feature | Cubre |
-|---|---|
-| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) |
-| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación |
-| `open-data` | M2: `RiesgoBaseZona` por localidad |
-| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad |
-| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) |
-| `alerts` | M6, RN-08: alertas sobre la ruta activa |
-| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen |
+| Feature | Cubre | Estado |
+|---|---|---|
+| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). Falta RN-09 |
+| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
+| `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Pendiente. Es lo siguiente |
+| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Pendiente |
+| `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
+| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
 
 ## Reglas de arquitectura (feature-based)
 
@@ -108,6 +122,14 @@ Solo se crean los archivos que la feature necesita.
 - Coordenadas en SRID 4326; distancias con `geography` o en una proyección métrica.
 - Índices GiST en toda columna geométrica.
 - Toda modificación de esquema es una migración nueva. No se editan migraciones ya aplicadas.
+
+### Supabase
+- **Extensiones en el schema `extensions`** (convención de Supabase): `create extension ... with schema extensions`.
+- **RLS activado en toda tabla nueva, sin políticas.** Supabase expone el schema `public` por su API REST con la clave anónima; sin RLS, cualquiera podría leer o escribir las tablas saltándose el API (y RN-03). El API se conecta con un rol que no está sujeto a RLS.
+- **Conexión del API por el pooler en modo sesión** (puerto 5432 del host `pooler.supabase.com`). El modo transacción (6543) no conserva ajustes de sesión como `statement_timeout`, y la conexión directa solo funciona por IPv6.
+- **Un solo proyecto de desarrollo compartido.** Las migraciones se aplican una vez, por quien las crea, al integrarse. Nadie edita el esquema desde el dashboard.
+- **Los seeds marcan sus filas** para poder borrarlas sin tocar datos reales (ver `db/seeds`).
+- Las claves de Supabase (`service_role`, contraseña de la base) solo viven en `.env`, nunca en la web.
 
 ## Concurrencia y rendimiento
 
@@ -198,7 +220,10 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 ## Pruebas
 
 - Unitarias junto al código (`*.test.ts`) para reglas puras: peso de incidentes, deduplicación, ajustes de confianza, límite de reportes.
-- Integración contra PostGIS + pgRouting real (Testcontainers) para el ruteo y las consultas espaciales. No simular PostGIS.
+- Integración contra PostGIS + pgRouting real para el ruteo y las consultas espaciales, en archivos `*.int.test.ts`. No simular PostGIS.
+  - Se corren contra la base apuntada por `TEST_DATABASE_URL` (puede ser el proyecto de desarrollo).
+  - Cada prueba corre dentro de una transacción que se revierte al final, para no dejar datos en la base compartida.
+  - Las pruebas de concurrencia, que necesitan varias conexiones, usan datos con un marcador propio y los borran al terminar.
 - Cada regla de negocio (RN-xx) implementada debe tener al menos una prueba.
 - Las operaciones con riesgo de carrera (votos, fusión de incidentes, límite de reportes) tienen una prueba de concurrencia: varias peticiones simultáneas producen el resultado correcto.
 

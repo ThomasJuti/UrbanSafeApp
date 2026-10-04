@@ -1,5 +1,18 @@
 # UrbanSafe — Especificación del MVP
 
+## Estado de implementación
+
+Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que no aparece aquí sigue pendiente.
+
+### Hecho
+
+- **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate.
+- **Modelo `Incidente` (sección 4, RN-01).** Esquema zod, catálogo de delitos y parámetros iniciales en `packages/shared`. Tablas `incidents` e `incident_sources` con geometría en SRID 4326, índice GiST y RLS activado sin políticas. Los datos de prueba están en `db/seeds` y usan el prefijo de id `00000000-0000-4000-8000-`.
+- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
+
+### Siguiente
+
+- **Reportes comunitarios (M3, F2, F4).** Apodo, enviar un incidente tocando el mapa, confirmar o negar, y que el reporte aparezca en los mapas conectados en menos de 1 s.
 
 ## 1. Visión
 
@@ -286,7 +299,7 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 
 | Pieza | Tecnología | Motivo |
 |---|---|---|
-| Base de datos | PostgreSQL + PostGIS + pgRouting | Incidentes geoespaciales, grafo de calles y ruteo con costo de riesgo en un solo lugar; el modelo de riesgo (RN-06, RN-07, RN-10, RN-11) queda expresado en SQL |
+| Base de datos | PostgreSQL + PostGIS + pgRouting, administrado en Supabase (solo como base de datos) | Incidentes geoespaciales, grafo de calles y ruteo con costo de riesgo en un solo lugar; el modelo de riesgo (RN-06, RN-07, RN-10, RN-11) queda expresado en SQL. Supabase simplifica el despliegue sin cambiar el modelo |
 | Backend / API | Node.js + TypeScript con Hono | Liviano; el cómputo pesado lo resuelve la base de datos |
 | Tiempo real | WebSockets (Socket.IO) | Difusión inmediata de reportes y alertas a todos los mapas conectados |
 | Frontend | React + Vite + TypeScript; una app con dos rutas: `/domiciliario` (M7) y `/reportar` (M8) | Ambas vistas son aplicaciones interactivas centradas en el mapa |
@@ -294,4 +307,4 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 | Extracción de noticias | LLM con salida estructurada, detrás de un adaptador intercambiable (proveedor por definir) | Extracción de tipo, ubicación y hora a JSON sin NLP propio; el adaptador permite cambiar de proveedor sin afectar el resto del sistema |
 | Geocodificación | Google Geocoding API | Mejor manejo de direcciones colombianas que Nominatim |
 | Tareas programadas | node-cron dentro del backend | Suficiente para la frecuencia de ingesta del MVP |
-| Entorno local | Docker Compose (PostgreSQL/PostGIS + API) | Mismo entorno para todo el equipo con un comando |
+| Entorno de desarrollo | API y web en local contra un proyecto de Supabase en la nube compartido por el equipo; sin Docker | Prioriza la velocidad de desarrollo del MVP sobre el aislamiento entre entornos |
