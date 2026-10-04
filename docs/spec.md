@@ -1,5 +1,18 @@
 # UrbanSafe — Especificación del MVP
 
+## Estado de implementación
+
+Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que no aparece aquí sigue pendiente.
+
+### Hecho
+
+- **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate.
+- **Modelo `Incidente` (sección 4, RN-01).** Esquema zod, catálogo de delitos y parámetros iniciales en `packages/shared`. Tablas `incidents` e `incident_sources` con geometría en SRID 4326, índice GiST y RLS activado sin políticas. Los datos de prueba están en `db/seeds` y usan el prefijo de id `00000000-0000-4000-8000-`.
+- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
+
+### Siguiente
+
+- **Reportes comunitarios (M3, F2, F4).** Apodo, enviar un incidente tocando el mapa, confirmar o negar, y que el reporte aparezca en los mapas conectados en menos de 1 s.
 
 ## 1. Visión
 

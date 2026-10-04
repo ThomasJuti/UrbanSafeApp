@@ -6,7 +6,7 @@ Lineamientos para cualquier persona o agente que trabaje en este repo.
 
 UrbanSafe calcula rutas más seguras para domiciliarios en Bogotá combinando noticias, datos abiertos oficiales y reportes comunitarios, y alerta sobre incidentes durante el recorrido.
 
-**La fuente de verdad es [`docs/spec.md`](docs/spec.md).** Si el código y el spec no coinciden, gana el spec; si el spec está mal o incompleto, se corrige el spec en el mismo cambio.
+**La fuente de verdad es [`docs/spec.md`](docs/spec.md).** Si el código y el spec no coinciden, gana el spec; si el spec está mal o incompleto, se corrige el spec en el mismo cambio. El avance está en **Estado de implementación**, al inicio del spec: no reimplementar lo que figura como hecho, y actualizar esa sección en el mismo cambio.
 
 ## Stack
 
@@ -60,16 +60,16 @@ docs/spec.md
 
 ### Features del API y su trazabilidad con el spec
 
-| Feature | Cubre |
-|---|---|
-| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) |
-| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación |
-| `open-data` | M2: `RiesgoBaseZona` por localidad |
-| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad |
-| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) |
-| `alerts` | M6, RN-08: alertas sobre la ruta activa |
-| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen |
+| Feature | Cubre | Estado |
+|---|---|---|
+| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). Falta RN-09 |
+| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
+| `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Pendiente. Es lo siguiente |
+| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Pendiente |
+| `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
+| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
 
 ## Reglas de arquitectura (feature-based)
 
