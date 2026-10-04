@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-// Catálogo de tipos de delito (spec, sección 4).
 export const INCIDENT_TYPES = [
   'personal_theft',
   'motorcycle_theft',

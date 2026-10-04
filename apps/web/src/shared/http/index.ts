@@ -1,6 +1,5 @@
 import type { z } from 'zod';
 
-/** GET al API, validando la respuesta con zod en el borde. */
 export async function getJson<T extends z.ZodType>(
   path: string,
   schema: T,

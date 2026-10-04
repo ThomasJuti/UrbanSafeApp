@@ -1,8 +1,6 @@
 import type { IncidentType, SourceKind } from '@urbansafe/shared';
 import type { ColumnType, Generated } from 'kysely';
 
-// Refleja db/migrations. Las columnas de geometría se leen y escriben con funciones PostGIS vía `sql`.
-
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type LocationKind = 'point' | 'neighborhood' | 'locality';

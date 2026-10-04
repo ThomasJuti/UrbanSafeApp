@@ -3,14 +3,13 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MapContext } from './map-context';
 
-// maplibre ubica su worker junto a su propio archivo, y Vite lo renombra al empaquetarlo.
+// Sin esto el mapa nunca carga: maplibre busca el worker al lado de su archivo y Vite lo renombra.
 setWorkerUrl(workerUrl);
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 const BOGOTA_CENTER: [number, number] = [-74.0817, 4.6533];
 const INITIAL_ZOOM = 11;
 
-/** Mapa base de Bogotá. Los hijos se montan cuando el estilo terminó de cargar. */
 export function BaseMap({ children }: { children?: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MapLibreMap | null>(null);
@@ -28,8 +27,8 @@ export function BaseMap({ children }: { children?: ReactNode }) {
 
     return () => {
       setMap(null);
-      // React limpia el efecto del padre antes que los de los hijos; se difiere para que
-      // las capas puedan quitar sus fuentes antes de destruir el mapa.
+      // React limpia el padre antes que los hijos. Espero un tick para que las capas
+      // alcancen a quitar sus fuentes antes de destruir el mapa.
       queueMicrotask(() => instance.remove());
     };
   }, []);

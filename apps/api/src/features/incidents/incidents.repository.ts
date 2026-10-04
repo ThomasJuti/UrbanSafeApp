@@ -2,7 +2,6 @@ import { PARAMS, type Bbox, type MapIncident, type Severity } from '@urbansafe/s
 import { sql } from 'kysely';
 import type { Db } from '../../shared/db';
 
-/** Incidentes visibles (RN-12) cuya geometría toca la caja, del más reciente al más antiguo. */
 export async function listVisibleInBbox(db: Db, bbox: Bbox, limit: number): Promise<MapIncident[]> {
   const rows = await db
     .selectFrom('incidents')
@@ -15,7 +14,7 @@ export async function listVisibleInBbox(db: Db, bbox: Bbox, limit: number): Prom
       'occurred_at',
       'time_known',
       'confidence',
-      // Para áreas, un punto garantizado dentro del polígono (el centroide puede caer fuera).
+      // No uso el centroide porque en barrios con forma rara puede caer fuera del polígono.
       sql<number>`ST_X(ST_PointOnSurface(geom))`.as('lng'),
       sql<number>`ST_Y(ST_PointOnSurface(geom))`.as('lat'),
     ])

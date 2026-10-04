@@ -33,7 +33,6 @@ function popupContent(feature: MapGeoJSONFeature): HTMLElement {
   return root;
 }
 
-/** Incidentes visibles de la zona del mapa, agrupados. Recarga por HTTP al mover el mapa. */
 export function IncidentsLayer() {
   const map = useMap();
 
@@ -72,7 +71,6 @@ export function IncidentsLayer() {
       paint: {
         'circle-color': ['step', ['get', 'severity'], '#f59e0b', 3, '#f97316', 5, '#dc2626'],
         'circle-radius': 8,
-        // Los reportes poco confirmados se ven más tenues.
         'circle-opacity': ['interpolate', ['linear'], ['get', 'confidence'], 0.1, 0.35, 1, 1],
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': 1.5,

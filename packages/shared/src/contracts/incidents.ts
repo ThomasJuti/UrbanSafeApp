@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { bboxSchema } from '../geo';
 import { incidentSchema } from '../incident';
 
-/** Tope de incidentes por respuesta del mapa, para mantener la lectura bajo 200 ms. */
 export const MAP_INCIDENTS_LIMIT = 2000;
 
 export const listIncidentsQuerySchema = z.object({
@@ -10,7 +9,7 @@ export const listIncidentsQuerySchema = z.object({
 });
 export type ListIncidentsQuery = z.output<typeof listIncidentsQuerySchema>;
 
-// Payload mínimo para el mapa: sin fuentes, que exponen identificadores de dispositivo.
+// Sin `sources` a propósito: ahí va el id del dispositivo de quien reportó.
 export const mapIncidentSchema = incidentSchema.pick({
   id: true,
   type: true,

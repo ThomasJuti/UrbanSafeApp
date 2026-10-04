@@ -1,5 +1,5 @@
--- Incidentes de prueba en Bogotá. Todos usan el prefijo de ID 00000000-0000-4000-8000-
--- para poder borrarlos sin tocar datos reales de la base compartida.
+-- Todos los ids del seed empiezan por 00000000-0000-4000-8000-. Así el delete de abajo
+-- solo borra datos de prueba y no toca nada real de la base compartida.
 set search_path = public, extensions;
 
 delete from incidents where id::text like '00000000-0000-4000-8000-%';
@@ -13,7 +13,7 @@ insert into incidents (id, type, severity, location_kind, geom, occurred_at, tim
   ('00000000-0000-4000-8000-000000000006', 'bicycle_theft',    5, 'point', ST_SetSRID(ST_MakePoint(-74.0790, 4.6330), 4326), now() - interval '3 hours',  true,  now() - interval '3 hours',  0.45),
   ('00000000-0000-4000-8000-000000000007', 'assault',          4, 'point', ST_SetSRID(ST_MakePoint(-74.1100, 4.7070), 4326), now() - interval '4 days',   true,  now() - interval '4 days',   0.7),
   ('00000000-0000-4000-8000-000000000008', 'personal_theft',   3, 'point', ST_SetSRID(ST_MakePoint(-74.0480, 4.6975), 4326), now() - interval '6 hours',  true,  now() - interval '6 hours',  0.3),
-  -- RN-12: confianza bajo el umbral; no debe aparecer en el mapa.
+  -- Este no debería verse en el mapa (RN-12).
   ('00000000-0000-4000-8000-000000000009', 'armed_robbery',    5, 'point', ST_SetSRID(ST_MakePoint(-74.0660, 4.6480), 4326), now() - interval '1 hour',   true,  now() - interval '1 hour',   0.05);
 
 insert into incident_sources (incident_id, kind, ref) values

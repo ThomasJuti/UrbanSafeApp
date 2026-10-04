@@ -4,7 +4,6 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-// Reglas de arquitectura de AGENTS.md ("Reglas de arquitectura").
 const architecture = {
   files: ['apps/*/src/**/*.{ts,tsx}'],
   plugins: { boundaries },
@@ -30,7 +29,6 @@ const architecture = {
         default: 'allow',
         policies: [
           {
-            // Regla 3: shared/ no importa de features/ (ni de pages/ o app/).
             from: { element: { type: 'shared' } },
             disallow: { to: { element: { types: { anyOf: ['feature', 'page', 'app'] } } } },
           },
@@ -43,7 +41,7 @@ const architecture = {
             disallow: { to: { element: { type: 'app' } } },
           },
           {
-            // Regla 2: otras features importan solo desde index.ts.
+            // Entre features distintas solo se entra por index.ts.
             disallow: {
               to: {
                 element: {
@@ -61,7 +59,6 @@ const architecture = {
             from: { element: { types: { anyOf: ['page', 'app', 'shared'] } } },
           },
           {
-            // api y web solo comparten código por packages/shared.
             disallow: { to: { element: { captured: { app: '!{{ from.element.captured.app }}' } } } },
           },
         ],

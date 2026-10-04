@@ -6,7 +6,6 @@ export const latLngSchema = z.object({
 });
 export type LatLng = z.infer<typeof latLngSchema>;
 
-/** Caja geográfica `minLng,minLat,maxLng,maxLat`, en el formato que entrega MapLibre. */
 export const bboxSchema = z
   .string()
   .transform((value, ctx) => {

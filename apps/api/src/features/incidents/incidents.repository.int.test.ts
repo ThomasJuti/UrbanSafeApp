@@ -4,7 +4,7 @@ import { createDb, type Db } from '../../shared/db';
 import { withRollback } from '../../shared/db/testing';
 import { listVisibleInBbox } from './incidents.repository';
 
-// Caja en el océano frente a la Isla Nula, lejos de cualquier dato real o de seed.
+// En el mar, cerca de (0,0): ahí no hay datos reales ni del seed que ensucien la prueba.
 const BBOX = { minLng: 0, minLat: 0, maxLng: 0.01, maxLat: 0.01 };
 
 let db: Db;

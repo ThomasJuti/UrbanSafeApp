@@ -16,13 +16,12 @@ export function poolConfigFromUrl(url: string): pg.PoolConfig {
   const sslmode = parsed.searchParams.get('sslmode');
   parsed.searchParams.delete('sslmode');
 
-  // pg interpreta `sslmode=require` como verify-full, que falla con la CA propia de Supabase.
-  // Se aplica la semántica de libpq (la que usa dbmate): cifrado sin verificar el certificado.
+  // pg toma sslmode=require como verify-full y revienta con la CA de Supabase.
+  // Ciframos sin verificar el certificado, igual que hace dbmate.
   const ssl = sslmode && sslmode !== 'disable' ? { rejectUnauthorized: false } : undefined;
   return { connectionString: parsed.toString(), ...(ssl ? { ssl } : {}) };
 }
 
-/** Único pool del API. Ninguna feature abre conexiones propias. */
 export function createDb(options: DbOptions): { db: Db; pool: pg.Pool } {
   const pool = new pg.Pool({ ...poolConfigFromUrl(options.url), max: options.poolSize });
   const sessionSetup = CompiledQuery.raw(
@@ -32,7 +31,7 @@ export function createDb(options: DbOptions): { db: Db; pool: pg.Pool } {
   const db = new Kysely<Database>({
     dialect: new PostgresDialect({
       pool,
-      // Requiere el pooler en modo sesión: en modo transacción estos SET no persisten.
+      // Ojo: esto solo sirve con el pooler en modo sesión. En modo transacción los SET se pierden.
       onCreateConnection: async (connection) => {
         await connection.executeQuery(sessionSetup);
       },
