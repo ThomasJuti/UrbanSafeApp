@@ -286,7 +286,7 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 
 | Pieza | Tecnología | Motivo |
 |---|---|---|
-| Base de datos | PostgreSQL + PostGIS + pgRouting | Incidentes geoespaciales, grafo de calles y ruteo con costo de riesgo en un solo lugar; el modelo de riesgo (RN-06, RN-07, RN-10, RN-11) queda expresado en SQL |
+| Base de datos | PostgreSQL + PostGIS + pgRouting, administrado en Supabase (solo como base de datos) | Incidentes geoespaciales, grafo de calles y ruteo con costo de riesgo en un solo lugar; el modelo de riesgo (RN-06, RN-07, RN-10, RN-11) queda expresado en SQL. Supabase simplifica el despliegue sin cambiar el modelo |
 | Backend / API | Node.js + TypeScript con Hono | Liviano; el cómputo pesado lo resuelve la base de datos |
 | Tiempo real | WebSockets (Socket.IO) | Difusión inmediata de reportes y alertas a todos los mapas conectados |
 | Frontend | React + Vite + TypeScript; una app con dos rutas: `/domiciliario` (M7) y `/reportar` (M8) | Ambas vistas son aplicaciones interactivas centradas en el mapa |
@@ -294,4 +294,4 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 | Extracción de noticias | LLM con salida estructurada, detrás de un adaptador intercambiable (proveedor por definir) | Extracción de tipo, ubicación y hora a JSON sin NLP propio; el adaptador permite cambiar de proveedor sin afectar el resto del sistema |
 | Geocodificación | Google Geocoding API | Mejor manejo de direcciones colombianas que Nominatim |
 | Tareas programadas | node-cron dentro del backend | Suficiente para la frecuencia de ingesta del MVP |
-| Entorno local | Docker Compose (PostgreSQL/PostGIS + API) | Mismo entorno para todo el equipo con un comando |
+| Entorno de desarrollo | API y web en local contra un proyecto de Supabase en la nube compartido por el equipo; sin Docker | Prioriza la velocidad de desarrollo del MVP sobre el aislamiento entre entornos |

@@ -12,14 +12,14 @@ UrbanSafe calcula rutas más seguras para domiciliarios en Bogotá combinando no
 
 - **Lenguaje:** TypeScript en todo el repo (modo `strict`, ESM).
 - **Monorepo:** pnpm workspaces.
-- **Base de datos:** PostgreSQL + PostGIS + pgRouting.
+- **Base de datos:** PostgreSQL + PostGIS + pgRouting en Supabase. Supabase se usa **solo como base de datos**: no se usan su Realtime, Auth, Edge Functions ni la API REST autogenerada.
 - **API:** Node.js + Hono; tiempo real con Socket.IO; tareas con node-cron.
 - **Web:** React + Vite + MapLibre GL JS.
 - **Acceso a datos:** Kysely (SQL tipado, PostGIS con `sql\`...\``). Sin ORM.
 - **Migraciones:** SQL puro (dbmate).
 - **Validación:** zod (esquemas en `packages/shared`).
-- **Pruebas:** Vitest; integración contra PostGIS real con Testcontainers.
-- **Entorno local:** Docker Compose.
+- **Pruebas:** Vitest; integración contra PostGIS real en Supabase.
+- **Entorno de desarrollo:** API y web en local contra un proyecto de Supabase en la nube compartido por el equipo. Sin Docker.
 
 ## Estructura
 
@@ -108,6 +108,14 @@ Solo se crean los archivos que la feature necesita.
 - Coordenadas en SRID 4326; distancias con `geography` o en una proyección métrica.
 - Índices GiST en toda columna geométrica.
 - Toda modificación de esquema es una migración nueva. No se editan migraciones ya aplicadas.
+
+### Supabase
+- **Extensiones en el schema `extensions`** (convención de Supabase): `create extension ... with schema extensions`.
+- **RLS activado en toda tabla nueva, sin políticas.** Supabase expone el schema `public` por su API REST con la clave anónima; sin RLS, cualquiera podría leer o escribir las tablas saltándose el API (y RN-03). El API se conecta con un rol que no está sujeto a RLS.
+- **Conexión del API por el pooler en modo sesión** (puerto 5432 del host `pooler.supabase.com`). El modo transacción (6543) no conserva ajustes de sesión como `statement_timeout`, y la conexión directa solo funciona por IPv6.
+- **Un solo proyecto de desarrollo compartido.** Las migraciones se aplican una vez, por quien las crea, al integrarse. Nadie edita el esquema desde el dashboard.
+- **Los seeds marcan sus filas** para poder borrarlas sin tocar datos reales (ver `db/seeds`).
+- Las claves de Supabase (`service_role`, contraseña de la base) solo viven en `.env`, nunca en la web.
 
 ## Concurrencia y rendimiento
 
@@ -198,7 +206,10 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 ## Pruebas
 
 - Unitarias junto al código (`*.test.ts`) para reglas puras: peso de incidentes, deduplicación, ajustes de confianza, límite de reportes.
-- Integración contra PostGIS + pgRouting real (Testcontainers) para el ruteo y las consultas espaciales. No simular PostGIS.
+- Integración contra PostGIS + pgRouting real para el ruteo y las consultas espaciales. No simular PostGIS.
+  - Se corren contra la base apuntada por `TEST_DATABASE_URL` (puede ser el proyecto de desarrollo).
+  - Cada prueba corre dentro de una transacción que se revierte al final, para no dejar datos en la base compartida.
+  - Las pruebas de concurrencia, que necesitan varias conexiones, usan datos con un marcador propio y los borran al terminar.
 - Cada regla de negocio (RN-xx) implementada debe tener al menos una prueba.
 - Las operaciones con riesgo de carrera (votos, fusión de incidentes, límite de reportes) tienen una prueba de concurrencia: varias peticiones simultáneas producen el resultado correcto.
 
