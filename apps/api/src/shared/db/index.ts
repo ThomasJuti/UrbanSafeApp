@@ -1,4 +1,4 @@
-import { Kysely, PostgresDialect } from 'kysely';
+import { CompiledQuery, Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import type { Database } from './schema';
 
@@ -25,14 +25,18 @@ export function poolConfigFromUrl(url: string): pg.PoolConfig {
 /** Único pool del API. Ninguna feature abre conexiones propias. */
 export function createDb(options: DbOptions): { db: Db; pool: pg.Pool } {
   const pool = new pg.Pool({ ...poolConfigFromUrl(options.url), max: options.poolSize });
+  const sessionSetup = CompiledQuery.raw(
+    `set statement_timeout = ${Math.trunc(options.statementTimeoutMs)}; set search_path = public, extensions`,
+  );
 
-  // Requiere el pooler en modo sesión: en modo transacción estos SET no persisten.
-  pool.on('connect', (client) => {
-    void client.query(
-      `set statement_timeout = ${Math.trunc(options.statementTimeoutMs)}; set search_path = public, extensions`,
-    );
+  const db = new Kysely<Database>({
+    dialect: new PostgresDialect({
+      pool,
+      // Requiere el pooler en modo sesión: en modo transacción estos SET no persisten.
+      onCreateConnection: async (connection) => {
+        await connection.executeQuery(sessionSetup);
+      },
+    }),
   });
-
-  const db = new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
   return { db, pool };
 }
