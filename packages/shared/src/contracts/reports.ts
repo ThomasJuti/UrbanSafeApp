@@ -24,4 +24,22 @@ export const createReportResponseSchema = z.object({
 });
 export type CreateReportResponse = z.infer<typeof createReportResponseSchema>;
 
-export const REPORT_ERRORS = { rateLimited: 'rate_limited' } as const;
+export const VOTES = ['confirm', 'deny'] as const;
+export type Vote = (typeof VOTES)[number];
+
+// F4: "¿Sigue ahí?". Sí confirma, no niega.
+export const castVoteBodySchema = z.object({
+  incidentId: z.uuid(),
+  deviceId: z.uuid(),
+  nickname: nicknameSchema,
+  vote: z.enum(VOTES),
+});
+export type CastVoteBody = z.infer<typeof castVoteBodySchema>;
+
+export const VOTE_OUTCOMES = ['counted', 'already_voted', 'own_report'] as const;
+export type VoteOutcome = (typeof VOTE_OUTCOMES)[number];
+
+export const castVoteResponseSchema = z.object({ outcome: z.enum(VOTE_OUTCOMES) });
+export type CastVoteResponse = z.infer<typeof castVoteResponseSchema>;
+
+export const REPORT_ERRORS = { rateLimited: 'rate_limited', incidentNotAvailable: 'incident_not_available' } as const;
