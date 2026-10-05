@@ -1,4 +1,4 @@
-import type { IncidentType, SourceKind } from '@urbansafe/shared';
+import type { IncidentType, ReportOutcome, SourceKind } from '@urbansafe/shared';
 import type { ColumnType, Generated } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
@@ -26,7 +26,25 @@ export interface IncidentSourcesTable {
   added_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+export interface ReportersTable {
+  device_id: string;
+  nickname: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface CommunityReportsTable {
+  id: Generated<string>;
+  client_id: string;
+  device_id: string;
+  incident_id: string;
+  outcome: ReportOutcome;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface Database {
   incidents: IncidentsTable;
   incident_sources: IncidentSourcesTable;
+  reporters: ReportersTable;
+  community_reports: CommunityReportsTable;
 }
