@@ -15,10 +15,17 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Una sola transacción.** Todo ocurre en la función SQL `submit_community_report`: límite de 5 por hora, deduplicación por tipo compatible, a ≤ 500 m y ≤ 24 h, y confirmación +0,15 si el reporte cae en un incidente de otro.
   - **Concurrencia.** Se serializa con un advisory lock global, no por celda; para el volumen del MVP alcanza.
   - **Tiempo real.** Los mapas conectados reciben `incident.created` e `incident.updated` por Socket.IO, en la sala pública `incidents`.
+- **Reportes comunitarios, parte 2 (M3, F4; RN-04; RN-12).**
+  - **"¿Sigue ahí?".** En el popup de un incidente visible, "Sí" confirma (+0,15) y "No" niega (−0,2), con piso 0 y tope 1. Va por `POST /api/reports/votes`.
+  - **Voto único.** Un voto por dispositivo e incidente, garantizado por la llave primaria de `incident_votes`. Repetir el mismo voto es un reintento; cambiarlo no cuenta. Nadie vota su propio reporte, y quien ya votó no vuelve a contar reportándolo.
+  - **Reputación.** `reporters.vote_balance` suma las confirmaciones y resta las negaciones que reciben sus incidentes, por voto o por reporte. La confianza inicial de sus siguientes reportes sube 0,02 por punto, hasta 0,5.
+  - **Visibilidad (RN-12).** Cada voto emite `incident.updated`. El mapa oculta lo que cae bajo 0,1 y lo vuelve a mostrar si sube; votar un incidente oculto responde 404.
+  - **Concurrencia.** Votos y reportes comparten el mismo advisory lock.
+- **RN-02 en el MVP.** Se reporta eligiendo un punto en el mapa, como permite el spec mientras no haya GPS real.
 
 ### Siguiente
 
-- **Reportes comunitarios, parte 2 (M3, F4, RN-02, RN-12).** Confirmar o negar ("¿Sigue ahí?") con voto único, no votar el propio reporte, reputación y recálculo de la visibilidad.
+- **Ruteo seguro (M5) con el modelo de riesgo (M4) y los datos abiertos (M2).** Grafo de OSM con pgRouting, riesgo por tramo precalculado y las 3 rutas.
 
 ## 1. Visión
 
@@ -190,6 +197,9 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   - Cada confirmación de otro usuario sube la confianza; cada negación la baja.
   - Cada usuario vota una sola vez por incidente y no vota sus propios reportes.
   - Los usuarios cuyos reportes suelen confirmarse ganan reputación; sus siguientes reportes empiezan con mayor confianza.
+    - El **saldo** de un usuario es la cantidad de confirmaciones menos la cantidad de negaciones que recibieron, de otros usuarios, los incidentes donde es fuente comunitaria.
+    - Confianza inicial de su próximo reporte = `min(0,5; 0,3 + 0,02 × max(0, saldo))`.
+    - Un saldo negativo no baja la confianza inicial: los reportes falsos ya pierden peso con las negaciones.
   - Límite de frecuencia: máximo 5 reportes por usuario por hora.
 - **RN-05 · Horizontes de tiempo.**
 
@@ -207,7 +217,7 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   - **Duplicado exacto:** misma URL original del artículo o título casi idéntico. Si la URL de Google News no se pudo decodificar (M1), se compara el título normalizado más el medio. Se descarta la copia.
   - **Mismo hecho:** dos incidentes con tipos iguales o compatibles (sección 4), a menos de 500 m entre sí (o con el punto dentro del área del otro, solo si el área es de nivel barrio) y con menos de 24 h de diferencia en `ocurrido_en` se fusionan en uno solo que conserva todas sus fuentes y el tipo de mayor gravedad. La fusión aumenta la confianza del incidente.
   - Un incidente de nivel localidad nunca absorbe a otros por contención: el área es demasiado grande para asumir que es el mismo hecho.
-  - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo. Si quien reporta ya es fuente de ese incidente, no cuenta de nuevo. El reporte se compara con un `ocurrido_en` igual al momento del envío.
+  - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo. Si quien reporta ya es fuente de ese incidente o ya votó sobre él, no cuenta de nuevo. El reporte se compara con un `ocurrido_en` igual al momento del envío.
 - **RN-10 · Riesgo de un tramo.**
   - Aporte de un incidente puntual: `peso × max(0, 1 − d / R)`, donde `d` es la distancia del incidente al tramo y `R` el radio de influencia.
   - Aporte de un incidente de área: `peso × min(1, A₀ / A)` a cada tramo dentro del área, donde `A` es el área del barrio o localidad y `A₀ = π·R²`. Así el peso se reparte en proporción al tamaño de la zona.
@@ -240,6 +250,7 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
 | Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
+| Reputación (RN-04) | +0,02 de confianza inicial por punto de saldo · Máximo 0,5 | Unas 10 confirmaciones netas llevan a un reportero al máximo |
 | Umbral de visibilidad (RN-12) | 0,1 | Con 2 negaciones, un reporte comunitario nuevo se oculta |
 | Ventana del mapa (M8) | 7 días por `ocurrido_en` | Igual al horizonte del riesgo reciente; lo más viejo ya casi no pesa (RN-06) |
 

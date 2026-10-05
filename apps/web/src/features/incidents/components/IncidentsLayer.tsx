@@ -1,6 +1,7 @@
-import { INCIDENT_CATALOG, incidentTypeSchema, type Bbox, type MapIncident } from '@urbansafe/shared';
-import { Popup, type GeoJSONSource, type MapGeoJSONFeature, type MapLayerMouseEvent } from 'maplibre-gl';
-import { useEffect } from 'react';
+import { INCIDENT_CATALOG, type Bbox, type MapIncident } from '@urbansafe/shared';
+import { Popup, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useMap } from '../../../shared/map';
 import { getSocket } from '../../../shared/socket';
 import { fetchIncidents } from '../api';
@@ -25,20 +26,11 @@ function formatAgo(iso: string): string {
   return relativeTime.format(Math.round(hours / 24), 'day');
 }
 
-function popupContent(feature: MapGeoJSONFeature): HTMLElement {
-  const type = incidentTypeSchema.safeParse(feature.properties['type']);
-  const root = document.createElement('div');
-  root.className = 'incident-popup';
-  const title = document.createElement('strong');
-  title.textContent = type.success ? INCIDENT_CATALOG[type.data].label : 'Incidente';
-  const when = document.createElement('span');
-  when.textContent = formatAgo(String(feature.properties['occurredAt']));
-  root.append(title, when);
-  return root;
-}
+type Selected = { incident: MapIncident; container: HTMLElement };
 
-export function IncidentsLayer() {
+export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: MapIncident) => ReactNode) | undefined }) {
   const map = useMap();
+  const [selected, setSelected] = useState<Selected | null>(null);
 
   useEffect(() => {
     map.addSource(SOURCE_ID, {
@@ -123,13 +115,30 @@ export function IncidentsLayer() {
       map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom });
     };
 
+    let popup: Popup | null = null;
+    let popupIncidentId: string | null = null;
+    const closePopup = () => popup?.remove();
+
     const onPointClick = (event: MapLayerMouseEvent) => {
-      const feature = event.features?.[0];
-      if (!feature || feature.geometry.type !== 'Point') return;
-      new Popup({ offset: 12 })
-        .setLngLat(feature.geometry.coordinates as [number, number])
-        .setDOMContent(popupContent(feature))
+      const id = event.features?.[0]?.properties['id'];
+      const incident = typeof id === 'string' ? store.get(id) : undefined;
+      if (!incident) return;
+      closePopup();
+
+      const container = document.createElement('div');
+      const opened = new Popup({ offset: 12, maxWidth: '280px' })
+        .setLngLat([incident.location.point.lng, incident.location.point.lat])
+        .setDOMContent(container)
         .addTo(map);
+      opened.on('close', () => {
+        if (popup !== opened) return;
+        popup = null;
+        popupIncidentId = null;
+        setSelected(null);
+      });
+      popup = opened;
+      popupIncidentId = incident.id;
+      setSelected({ incident, container });
     };
 
     const setPointer = () => (map.getCanvas().style.cursor = 'pointer');
@@ -138,6 +147,10 @@ export function IncidentsLayer() {
     const onLiveIncident = ({ incident }: { incident: MapIncident }) => {
       store.upsert(incident);
       render();
+      if (incident.id !== popupIncidentId) return;
+      // RN-12: si mientras está abierto lo ocultan las negaciones, el popup se cierra.
+      if (store.get(incident.id)) setSelected((current) => current && { ...current, incident });
+      else closePopup();
     };
     const socket = getSocket();
     socket.on('incident.created', onLiveIncident);
@@ -153,6 +166,7 @@ export function IncidentsLayer() {
     reload();
 
     return () => {
+      closePopup();
       clearTimeout(timer);
       controller?.abort();
       socket.off('incident.created', onLiveIncident);
@@ -169,5 +183,14 @@ export function IncidentsLayer() {
     };
   }, [map]);
 
-  return null;
+  if (!selected) return null;
+  const { incident, container } = selected;
+  return createPortal(
+    <div className="incident-popup">
+      <strong>{INCIDENT_CATALOG[incident.type].label}</strong>
+      <span>{formatAgo(incident.occurredAt)}</span>
+      {renderDetails?.(incident)}
+    </div>,
+    container,
+  );
 }
