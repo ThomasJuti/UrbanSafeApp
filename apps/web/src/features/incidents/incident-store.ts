@@ -25,6 +25,9 @@ export function createIncidentStore() {
       liveSinceReload.set(incident.id, incident);
       apply(incidents, incident);
     },
+    get(id: string): MapIncident | undefined {
+      return incidents.get(id);
+    },
     values(): MapIncident[] {
       return [...incidents.values()];
     },

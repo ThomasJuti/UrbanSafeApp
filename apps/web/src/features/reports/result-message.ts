@@ -19,6 +19,6 @@ export function resultMessage(result: SubmitResult): ResultMessage {
     case 'confirmed':
       return { tone: 'success', text: 'Alguien ya lo había reportado: sumaste tu confirmación.' };
     case 'already_counted':
-      return { tone: 'warning', text: 'Ya habías reportado esto.' };
+      return { tone: 'warning', text: 'Ya habías reportado o votado este incidente.' };
   }
 }
