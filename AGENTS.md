@@ -65,7 +65,7 @@ docs/spec.md
 | `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes de la comunidad; falta la fusión con noticias |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
-| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho el envío con límite (RN-04), deduplicación e idempotencia, y la emisión en tiempo real. Sigue confirmar/negar, reputación y RN-02 |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite (RN-04), deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Pendiente |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
