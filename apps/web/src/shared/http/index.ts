@@ -9,3 +9,19 @@ export async function getJson<T extends z.ZodType>(
   if (!response.ok) throw new Error(`GET ${path} respondió ${response.status}`);
   return schema.parse(await response.json());
 }
+
+export type PostResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number };
+
+export async function postJson<T extends z.ZodType>(
+  path: string,
+  body: unknown,
+  schema: T,
+): Promise<PostResult<z.output<T>>> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return { ok: false, status: response.status };
+  return { ok: true, status: response.status, data: schema.parse(await response.json()) };
+}
