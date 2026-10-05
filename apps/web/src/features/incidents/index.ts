@@ -1,1 +1,1 @@
-export { IncidentsLayer } from './components/IncidentsLayer';
+export { IncidentsLayer, INCIDENT_LAYER_IDS } from './components/IncidentsLayer';

@@ -1,14 +1,18 @@
-import { INCIDENT_CATALOG, incidentTypeSchema, type Bbox } from '@urbansafe/shared';
+import { INCIDENT_CATALOG, incidentTypeSchema, type Bbox, type MapIncident } from '@urbansafe/shared';
 import { Popup, type GeoJSONSource, type MapGeoJSONFeature, type MapLayerMouseEvent } from 'maplibre-gl';
 import { useEffect } from 'react';
 import { useMap } from '../../../shared/map';
+import { getSocket } from '../../../shared/socket';
 import { fetchIncidents } from '../api';
+import { createIncidentStore } from '../incident-store';
 import { toFeatureCollection } from '../to-geojson';
 
 const SOURCE_ID = 'incidents';
 const CLUSTERS_LAYER = 'incidents-clusters';
 const CLUSTER_COUNT_LAYER = 'incidents-cluster-count';
 const POINTS_LAYER = 'incidents-points';
+
+export const INCIDENT_LAYER_IDS = [CLUSTERS_LAYER, POINTS_LAYER];
 const RELOAD_DEBOUNCE_MS = 300;
 
 const relativeTime = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
@@ -77,12 +81,16 @@ export function IncidentsLayer() {
       },
     });
 
+    const store = createIncidentStore();
+    const render = () => map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(toFeatureCollection(store.values()));
+
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const reload = () => {
       controller?.abort();
       controller = new AbortController();
+      store.startReload();
       const bounds = map.getBounds();
       const bbox: Bbox = {
         minLng: bounds.getWest(),
@@ -91,7 +99,10 @@ export function IncidentsLayer() {
         maxLat: bounds.getNorth(),
       };
       fetchIncidents(bbox, controller.signal)
-        .then((incidents) => map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(toFeatureCollection(incidents)))
+        .then((incidents) => {
+          store.finishReload(incidents);
+          render();
+        })
         .catch((error: unknown) => {
           if (error instanceof DOMException && error.name === 'AbortError') return;
           console.error('No se pudieron cargar los incidentes', error);
@@ -124,6 +135,14 @@ export function IncidentsLayer() {
     const setPointer = () => (map.getCanvas().style.cursor = 'pointer');
     const clearPointer = () => (map.getCanvas().style.cursor = '');
 
+    const onLiveIncident = ({ incident }: { incident: MapIncident }) => {
+      store.upsert(incident);
+      render();
+    };
+    const socket = getSocket();
+    socket.on('incident.created', onLiveIncident);
+    socket.on('incident.updated', onLiveIncident);
+
     map.on('moveend', scheduleReload);
     map.on('click', CLUSTERS_LAYER, onClusterClick);
     map.on('click', POINTS_LAYER, onPointClick);
@@ -136,6 +155,8 @@ export function IncidentsLayer() {
     return () => {
       clearTimeout(timer);
       controller?.abort();
+      socket.off('incident.created', onLiveIncident);
+      socket.off('incident.updated', onLiveIncident);
       map.off('moveend', scheduleReload);
       map.off('click', CLUSTERS_LAYER, onClusterClick);
       map.off('click', POINTS_LAYER, onPointClick);
