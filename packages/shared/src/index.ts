@@ -2,4 +2,6 @@ export * from './catalog';
 export * from './params';
 export * from './geo';
 export * from './incident';
+export * from './events';
 export * from './contracts/incidents';
+export * from './contracts/reports';

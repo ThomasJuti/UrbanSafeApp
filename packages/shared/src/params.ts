@@ -25,4 +25,6 @@ export const PARAMS = {
   areaConfidenceFactor: { neighborhood: 0.5, locality: 0.25 },
   confidenceAdjustments: { confirm: 0.15, deny: -0.2, merge: 0.1, max: 1 },
   visibilityThreshold: 0.1,
+  mapWindowMs: 7 * DAY_MS,
+  dedup: { maxDistanceM: 500, maxTimeGapMs: 24 * HOUR_MS },
 } as const;

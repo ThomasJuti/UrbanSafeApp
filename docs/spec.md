@@ -8,11 +8,17 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 - **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate.
 - **Modelo `Incidente` (sección 4, RN-01).** Esquema zod, catálogo de delitos y parámetros iniciales en `packages/shared`. Tablas `incidents` e `incident_sources` con geometría en SRID 4326, índice GiST y RLS activado sin políticas. Los datos de prueba están en `db/seeds` y usan el prefijo de id `00000000-0000-4000-8000-`.
-- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
+- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes de los últimos 7 días con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
+- **Reportes comunitarios, parte 1 (M3: apodo, reportar y tiempo real; RN-04; RN-09 para reportes de la comunidad).**
+  - **Identidad.** El apodo y un `deviceId` se guardan en `localStorage`.
+  - **Envío.** Se reporta tocando el mapa y eligiendo el tipo. `POST /api/reports` es idempotente por `clientId`.
+  - **Una sola transacción.** Todo ocurre en la función SQL `submit_community_report`: límite de 5 por hora, deduplicación por tipo compatible, a ≤ 500 m y ≤ 24 h, y confirmación +0,15 si el reporte cae en un incidente de otro.
+  - **Concurrencia.** Se serializa con un advisory lock global, no por celda; para el volumen del MVP alcanza.
+  - **Tiempo real.** Los mapas conectados reciben `incident.created` e `incident.updated` por Socket.IO, en la sala pública `incidents`.
 
 ### Siguiente
 
-- **Reportes comunitarios (M3, F2, F4).** Apodo, enviar un incidente tocando el mapa, confirmar o negar, y que el reporte aparezca en los mapas conectados en menos de 1 s.
+- **Reportes comunitarios, parte 2 (M3, F4, RN-02, RN-12).** Confirmar o negar ("¿Sigue ahí?") con voto único, no votar el propio reporte, reputación y recálculo de la visibilidad.
 
 ## 1. Visión
 
@@ -115,7 +121,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### M8 — Web de reportes (móvil)
 - Vista web móvil sin creación de cuenta; el usuario solo ingresa un apodo.
-- Muestra el mapa de la ciudad con los incidentes visibles (noticias y reportes comunitarios) y el riesgo base por localidad.
+- Muestra el mapa de la ciudad con los incidentes visibles (noticias y reportes comunitarios) ocurridos dentro de la ventana del mapa (ver Parámetros iniciales), y el riesgo base por localidad.
 - El usuario toca un punto del mapa, elige el tipo de incidente y lo envía.
 - El usuario toca un incidente existente para confirmarlo o negarlo (M3).
 - Nunca muestra la ruta ni la posición de ningún domiciliario (RN-03).
@@ -201,7 +207,7 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   - **Duplicado exacto:** misma URL original del artículo o título casi idéntico. Si la URL de Google News no se pudo decodificar (M1), se compara el título normalizado más el medio. Se descarta la copia.
   - **Mismo hecho:** dos incidentes con tipos iguales o compatibles (sección 4), a menos de 500 m entre sí (o con el punto dentro del área del otro, solo si el área es de nivel barrio) y con menos de 24 h de diferencia en `ocurrido_en` se fusionan en uno solo que conserva todas sus fuentes y el tipo de mayor gravedad. La fusión aumenta la confianza del incidente.
   - Un incidente de nivel localidad nunca absorbe a otros por contención: el área es demasiado grande para asumir que es el mismo hecho.
-  - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo.
+  - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo. Si quien reporta ya es fuente de ese incidente, no cuenta de nuevo. El reporte se compara con un `ocurrido_en` igual al momento del envío.
 - **RN-10 · Riesgo de un tramo.**
   - Aporte de un incidente puntual: `peso × max(0, 1 − d / R)`, donde `d` es la distancia del incidente al tramo y `R` el radio de influencia.
   - Aporte de un incidente de área: `peso × min(1, A₀ / A)` a cada tramo dentro del área, donde `A` es el área del barrio o localidad y `A₀ = π·R²`. Así el peso se reparte en proporción al tamaño de la zona.
@@ -235,6 +241,7 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
 | Umbral de visibilidad (RN-12) | 0,1 | Con 2 negaciones, un reporte comunitario nuevo se oculta |
+| Ventana del mapa (M8) | 7 días por `ocurrido_en` | Igual al horizonte del riesgo reciente; lo más viejo ya casi no pesa (RN-06) |
 
 ## 6. Flujos principales
 
