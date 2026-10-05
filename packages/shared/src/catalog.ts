@@ -32,3 +32,14 @@ export const INCIDENT_CATALOG: Record<IncidentType, { label: string; severity: S
 export function severityOf(type: IncidentType): Severity {
   return INCIDENT_CATALOG[type].severity;
 }
+
+const THEFTS: IncidentType[] = ['personal_theft', 'motorcycle_theft', 'bicycle_theft', 'vehicle_theft'];
+const AGGRESSIONS: IncidentType[] = ['fight', 'assault', 'homicide'];
+
+// RN-09: dos hurtos distintos entre sí no son el mismo hecho, pero el atraco sí cuadra con cualquiera.
+export function compatibleTypes(type: IncidentType): IncidentType[] {
+  if (type === 'armed_robbery') return ['armed_robbery', ...THEFTS];
+  if (THEFTS.includes(type)) return [type, 'armed_robbery'];
+  if (AGGRESSIONS.includes(type)) return AGGRESSIONS;
+  return [type];
+}

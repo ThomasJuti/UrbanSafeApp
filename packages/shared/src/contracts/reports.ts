@@ -1,0 +1,27 @@
+import { z } from 'zod';
+import { incidentTypeSchema } from '../catalog';
+import { latLngSchema } from '../geo';
+import { mapIncidentSchema } from './incidents';
+
+export const nicknameSchema = z.string().trim().min(2).max(30);
+
+export const createReportBodySchema = z.object({
+  // Lo genera el cliente: si reintenta el envío, el servidor no cuenta el reporte dos veces.
+  clientId: z.uuid(),
+  deviceId: z.uuid(),
+  nickname: nicknameSchema,
+  type: incidentTypeSchema,
+  point: latLngSchema,
+});
+export type CreateReportBody = z.infer<typeof createReportBodySchema>;
+
+export const REPORT_OUTCOMES = ['created', 'confirmed', 'already_counted'] as const;
+export type ReportOutcome = (typeof REPORT_OUTCOMES)[number];
+
+export const createReportResponseSchema = z.object({
+  outcome: z.enum(REPORT_OUTCOMES),
+  incident: mapIncidentSchema,
+});
+export type CreateReportResponse = z.infer<typeof createReportResponseSchema>;
+
+export const REPORT_ERRORS = { rateLimited: 'rate_limited' } as const;
