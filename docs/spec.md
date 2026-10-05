@@ -22,10 +22,17 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Visibilidad (RN-12).** Cada voto emite `incident.updated`. El mapa oculta lo que cae bajo 0,1 y lo vuelve a mostrar si sube; votar un incidente oculto responde 404.
   - **Concurrencia.** Votos y reportes comparten el mismo advisory lock.
 - **RN-02 en el MVP.** Se reporta eligiendo un punto en el mapa, como permite el spec mientras no haya GPS real.
+- **Ruteo, parte 1 (M5: grafo y ruta más rápida).**
+  - **Grafo.** `pnpm db:import-graph` descarga las vías del casco urbano desde Overpass y reemplaza `road_vertices` y `road_edges` en una sola transacción. Quedan unos 115 000 vértices y 152 000 tramos (9 900 km, 54 MB).
+  - **Ruta.** `POST /api/routes` busca la ruta más rápida con `pgr_dijkstra` sobre el grafo recortado alrededor del origen y el destino. Si no encuentra camino, reintenta con un margen mayor.
+  - **Límites.** Corre con su propio `statement_timeout` y con 4 cálculos simultáneos como máximo.
+  - **Tiempos medidos.** En la base, entre 80 y 280 ms por ruta; desde local, de 0,6 a 0,9 s en total, dominado por los viajes de ida y vuelta a São Paulo.
+  - **Vista.** `/domiciliario` permite tocar el origen y el destino, dibuja la ruta y muestra la distancia y el tiempo.
 
 ### Siguiente
 
-- **Ruteo seguro (M5) con el modelo de riesgo (M4) y los datos abiertos (M2).** Grafo de OSM con pgRouting, riesgo por tramo precalculado y las 3 rutas.
+- **Riesgo base por localidad (M2).** Datos abiertos agregados por localidad, también pintados en `/reportar`.
+- **Riesgo por tramo y las 3 rutas (M4, M5, RN-07).** Riesgo precalculado por tramo, rutas balanceada y segura con su nivel de riesgo e incidentes cercanos, y la prueba de carga del presupuesto de 1,5 s.
 
 ## 1. Visión
 
@@ -108,7 +115,13 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - Cada opción muestra el tiempo estimado, el tiempo extra frente a la más rápida, el nivel de riesgo y el número de incidentes cercanos a la ruta.
 - **Nivel de riesgo de una ruta:** promedio de `riesgo(tramo, hora)` ponderado por el tiempo de recorrido de cada tramo, clasificado como bajo, medio o alto según los umbrales de Parámetros iniciales.
 - **Incidentes cercanos a una ruta:** incidentes visibles (RN-12) dentro del radio de influencia de algún tramo de la ruta.
-- Grafo de calles tomado de OpenStreetMap.
+- Grafo de calles tomado de OpenStreetMap:
+  - **Cobertura:** solo el casco urbano de Bogotá (ver Parámetros iniciales). El origen y el destino tienen que caer dentro.
+  - **Vías incluidas:** las `highway` aptas para moto, de `motorway` a `living_street` más `service` y los enlaces (`*_link`).
+  - **Vías excluidas:** las marcadas `access`, `motor_vehicle` o `motorcycle` = `no`/`private`, salvo que `motorcycle` o `motor_vehicle` las habilite explícitamente. Así salen los carriles exclusivos de TransMilenio.
+  - **Sentidos viales:** salen de `oneway` y de las rotondas (`junction=roundabout`).
+  - **Componentes sueltos:** se conserva solo el componente conectado más grande, para que nunca se enrute hacia una isla sin salida.
+  - Se descarga con la API Overpass y se recarga completo cuando se quiere actualizar.
 
 ### M6 — Alertas en tiempo real
 - Mientras el domiciliario sigue una ruta, alertar cuando haya un incidente reciente adelante en la ruta dentro de un radio definido.
@@ -243,6 +256,8 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Multiplicador horario (RN-11) | Ventana 8 semanas · mínimo 10 incidentes con hora · acotado a [0,5; 2] | Evita patrones con pocos datos |
 | α (RN-07): rápida / balanceada / segura | 0 / 1 / 5 | Un tramo de riesgo máximo cuesta 1×, 2× y 6× su tiempo de recorrido |
 | Velocidad promedio de moto (M5) | 25 km/h | Base del tiempo estimado; sin tráfico |
+| Casco urbano (M5) | Longitud −74,23 a −73,99 · Latitud 4,46 a 4,84 | Deja por fuera Sumapaz y la zona rural |
+| Recorte del grafo para rutear (M5) | Caja de origen y destino + 2 km por lado; si no hay ruta, + 6 km | La ruta casi nunca se sale de esa caja y el Dijkstra trabaja sobre mucho menos grafo |
 | Nivel de riesgo de ruta (M5) | Bajo < 0,2 ≤ medio < 0,5 ≤ alto | Clasificación que ve el domiciliario |
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
