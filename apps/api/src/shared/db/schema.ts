@@ -50,10 +50,31 @@ export interface CommunityReportsTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+// Los bigint llegan de pg como string.
+export interface RoadVerticesTable {
+  id: string;
+  geom: ColumnType<never, unknown, unknown>;
+}
+
+export interface RoadEdgesTable {
+  id: Generated<string>;
+  osm_way_id: string;
+  source: string;
+  target: string;
+  highway: string;
+  name: string | null;
+  length_m: number;
+  cost_s: number;
+  reverse_cost_s: number;
+  geom: ColumnType<never, unknown, unknown>;
+}
+
 export interface Database {
   incidents: IncidentsTable;
   incident_sources: IncidentSourcesTable;
   reporters: ReportersTable;
   community_reports: CommunityReportsTable;
   incident_votes: IncidentVotesTable;
+  road_vertices: RoadVerticesTable;
+  road_edges: RoadEdgesTable;
 }

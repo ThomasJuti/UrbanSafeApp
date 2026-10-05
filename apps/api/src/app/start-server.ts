@@ -1,14 +1,15 @@
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import type { RoutingConfig } from '../shared/config';
 import type { Db } from '../shared/db';
 import { createEventBus } from '../shared/events';
 import { createRealtime } from '../shared/realtime';
 import { createApp } from './create-app';
 
-export async function startServer(deps: { db: Db; port: number }) {
+export async function startServer(deps: { db: Db; port: number; routing: RoutingConfig }) {
   const bus = createEventBus();
-  const app = createApp({ db: deps.db, bus });
+  const app = createApp({ db: deps.db, bus, routing: deps.routing });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
     const server = serve({ fetch: app.fetch, port: deps.port }, () => resolve(server as HttpServer));
