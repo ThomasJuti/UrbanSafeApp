@@ -62,10 +62,10 @@ docs/spec.md
 
 | Feature | Cubre | Estado |
 |---|---|---|
-| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). Falta RN-09 |
+| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes de la comunidad; falta la fusión con noticias |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
-| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Pendiente. Es lo siguiente |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho el envío con límite (RN-04), deduplicación e idempotencia, y la emisión en tiempo real. Sigue confirmar/negar, reputación y RN-02 |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Pendiente |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
@@ -126,6 +126,7 @@ Solo se crean los archivos que la feature necesita.
 ### Supabase
 - **Extensiones en el schema `extensions`** (convención de Supabase): `create extension ... with schema extensions`.
 - **RLS activado en toda tabla nueva, sin políticas.** Supabase expone el schema `public` por su API REST con la clave anónima; sin RLS, cualquiera podría leer o escribir las tablas saltándose el API (y RN-03). El API se conecta con un rol que no está sujeto a RLS.
+- **Funciones SQL: revocar `EXECUTE` a `public`, `anon` y `authenticated`** en la misma migración que las crea. Supabase les da permiso por defecto y las expone en `/rest/v1/rpc`.
 - **Conexión del API por el pooler en modo sesión** (puerto 5432 del host `pooler.supabase.com`). El modo transacción (6543) no conserva ajustes de sesión como `statement_timeout`, y la conexión directa solo funciona por IPv6.
 - **Un solo proyecto de desarrollo compartido.** Las migraciones se aplican una vez, por quien las crea, al integrarse. Nadie edita el esquema desde el dashboard.
 - **Los seeds marcan sus filas** para poder borrarlas sin tocar datos reales (ver `db/seeds`).
