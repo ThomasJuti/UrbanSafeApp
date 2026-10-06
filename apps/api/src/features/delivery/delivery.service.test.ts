@@ -96,6 +96,19 @@ describe('sesión de entrega (M7, F1)', () => {
     expect(plan.mock.calls.map(([, at]) => at?.getTime())).toEqual([firstLegAt, firstLegAt + LONG_TICK_MS]);
   });
 
+  it('cada estado publicado lleva una versión mayor y la respuesta coincide con el último', async () => {
+    const { service, events } = setup();
+    const id = await createdId(service);
+
+    const accepted = await service.accept(id);
+    const versions = events
+      .filter((event) => event.name === 'delivery.updated')
+      .map((event) => (event.payload as DomainEvents['delivery.updated']).state.version);
+
+    expect(versions).toEqual([1, 2]);
+    expect(accepted.ok && accepted.state.version).toBe(2);
+  });
+
   it('dos "aceptar" a la vez calculan las rutas una sola vez y devuelven lo mismo', async () => {
     const { service, plan } = setup();
     const id = await createdId(service);

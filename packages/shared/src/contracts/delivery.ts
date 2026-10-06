@@ -31,6 +31,9 @@ export type DeliverySummary = z.infer<typeof deliverySummarySchema>;
 
 export const deliveryStateSchema = z.object({
   sessionId: z.uuid(),
+  // Sube con cada cambio publicado. La respuesta HTTP y el socket pueden llegar en desorden: el
+  // cliente descarta un estado con versión menor a la que ya tiene.
+  version: z.number().int().nonnegative(),
   status: z.enum(DELIVERY_STATUSES),
   order: z.object({ pickup: latLngSchema, dropoff: latLngSchema }),
   position: latLngSchema,

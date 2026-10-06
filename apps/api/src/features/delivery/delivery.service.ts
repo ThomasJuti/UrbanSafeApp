@@ -39,6 +39,7 @@ export type DeliveryDeps = {
 
 type Session = {
   id: string;
+  version: number;
   status: DeliveryStatus;
   order: Order;
   position: LatLng;
@@ -72,6 +73,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
   function toState(session: Session): DeliveryState {
     return {
       sessionId: session.id,
+      version: session.version,
       status: session.status,
       order: session.order,
       position: session.position,
@@ -85,6 +87,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
   }
 
   function publish(session: Session) {
+    session.version += 1;
     session.lastActivityMs = now();
     deps.bus.publish('delivery.updated', { state: toState(session) });
   }
@@ -214,6 +217,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
 
       const session: Session = {
         id: randomUUID(),
+        version: 0,
         status: 'offered',
         order: generated.order,
         position: generated.start,
