@@ -17,7 +17,9 @@
     "db:seed": "pnpm --filter @urbansafe/api db:seed",
     "db:import-graph": "pnpm --filter @urbansafe/api db:import-graph",
     "db:import-base-risk": "pnpm --filter @urbansafe/api db:import-base-risk",
-    "load:routes": "pnpm --filter @urbansafe/api load:routes"
+    "load:routes": "pnpm --filter @urbansafe/api load:routes",
+    "load:delivery": "pnpm --filter @urbansafe/api load:delivery",
+    "measure:safe-route": "pnpm --filter @urbansafe/api measure:safe-route"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

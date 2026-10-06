@@ -1,6 +1,6 @@
 import type { RouteKind, RouteOption } from '@urbansafe/shared';
 import { describe, expect, it } from 'vitest';
-import { summarizeDelivery } from './delivery-summary';
+import { safeRouteVerdict, summarizeDelivery } from './delivery-summary';
 
 function option(kind: RouteKind, durationS: number, riskScore: number, nearbyIncidentIds: string[] = []): RouteOption {
   return {
@@ -36,6 +36,31 @@ describe('resumen de la entrega (M7)', () => {
   it('sin riesgo en la ruta rápida no hay exposición que evitar', () => {
     const summary = summarizeDelivery([{ fastest: option('fastest', 600, 0), chosen: option('balanced', 620, 0) }]);
     expect(summary.exposureAvoided).toBeNull();
+  });
+
+  it('la más segura cumple el criterio si baja la exposición a la mitad sin pasar del 25 % de tiempo extra', () => {
+    const legs = [
+      { fastest: option('fastest', 600, 0.5), safest: option('safest', 660, 0.1) },
+      { fastest: option('fastest', 400, 0.4), safest: option('safest', 420, 0.2) },
+    ];
+    const verdict = safeRouteVerdict(legs);
+    expect(verdict.exposureReduction).toBeCloseTo(1 - 150 / 460);
+    expect(verdict.extraTimeRatio).toBeCloseTo(80 / 1000);
+    expect(verdict.meets).toBe(true);
+  });
+
+  it('no cumple si el ahorro de exposición exige más de un 25 % de tiempo extra', () => {
+    const verdict = safeRouteVerdict([
+      { fastest: option('fastest', 600, 0.5), safest: option('safest', 800, 0.1) },
+    ]);
+    expect(verdict.exposureReduction).toBeGreaterThan(0.5);
+    expect(verdict.meets).toBe(false);
+  });
+
+  it('no cumple si la más rápida no tenía riesgo que evitar', () => {
+    expect(safeRouteVerdict([{ fastest: option('fastest', 600, 0), safest: option('safest', 620, 0) }]).meets).toBe(
+      false,
+    );
   });
 
   it('una ruta más larga con el mismo riesgo expone más: el valor evitado queda negativo', () => {
