@@ -1,4 +1,5 @@
 import { importBaseRisk } from '../features/open-data';
+import { createRiskService } from '../features/risk';
 import { loadConfig } from '../shared/config';
 import { createDb } from '../shared/db';
 
@@ -10,6 +11,7 @@ const { db } = createDb({ url: config.databaseUrl, poolSize: 1, statementTimeout
 try {
   await importBaseRisk(db);
   console.log('Riesgo base importado');
+  await createRiskService(db).rebuild();
 } finally {
   await db.destroy();
 }

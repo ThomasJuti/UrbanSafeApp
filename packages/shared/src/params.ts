@@ -8,7 +8,10 @@ export const PARAMS = {
   influenceRadiusM: 250,
   saturationK: 5,
   weights: { base: 0.3, recent: 0.7 },
+  timeZone: 'America/Bogota',
   hourlyMultiplier: {
+    // Franjas de RN-11: madrugada, mañana, tarde y noche.
+    bandHours: 6,
     windowMs: 8 * 7 * DAY_MS,
     minIncidentsWithTime: 10,
     min: 0.5,

@@ -3,6 +3,7 @@ export * from './params';
 export * from './geo';
 export * from './incident';
 export * from './events';
+export * from './risk';
 export * from './contracts/incidents';
 export * from './contracts/reports';
 export * from './contracts/routes';
