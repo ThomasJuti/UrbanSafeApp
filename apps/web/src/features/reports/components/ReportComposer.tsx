@@ -1,4 +1,4 @@
-import { INCIDENT_CATALOG, INCIDENT_TYPES, type IncidentType, type LatLng } from '@urbansafe/shared';
+import { INCIDENT_CATALOG, INCIDENT_TYPES, isInsideUrbanArea, type IncidentType, type LatLng } from '@urbansafe/shared';
 import { Marker, type MapMouseEvent } from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { useMap } from '../../../shared/map';
@@ -7,6 +7,7 @@ import { resultMessage, type ResultMessage } from '../result-message';
 
 const MESSAGE_VISIBLE_MS = 4000;
 const MARKER_CLEARANCE_PX = 56;
+const OUTSIDE_AREA_MESSAGE: ResultMessage = { tone: 'warning', text: 'Solo se pueden reportar incidentes dentro de Bogotá.' };
 
 type Reporter = { deviceId: string; nickname: string };
 type Draft = { point: LatLng; type: IncidentType | null; clientId: string };
@@ -23,8 +24,14 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
     const onClick = (event: MapMouseEvent) => {
       const layers = ignoreLayers.filter((id) => map.getLayer(id));
       if (layers.length > 0 && map.queryRenderedFeatures(event.point, { layers }).length > 0) return;
+      const point = { lat: event.lngLat.lat, lng: event.lngLat.lng };
+      if (!isInsideUrbanArea(point)) {
+        setDraft(null);
+        setMessage(OUTSIDE_AREA_MESSAGE);
+        return;
+      }
       setDraft({
-        point: { lat: event.lngLat.lat, lng: event.lngLat.lng },
+        point,
         type: null,
         clientId: crypto.randomUUID(),
       });

@@ -1,10 +1,21 @@
 import { z } from 'zod';
+import { PARAMS } from './params';
 
 export const latLngSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
 });
 export type LatLng = z.infer<typeof latLngSchema>;
+
+export function isInsideUrbanArea({ lat, lng }: LatLng): boolean {
+  const box = PARAMS.urbanBbox;
+  return lng >= box.minLng && lng <= box.maxLng && lat >= box.minLat && lat <= box.maxLat;
+}
+
+// Rutas, reportes y pedidos solo tienen sentido sobre el grafo, que cubre el casco urbano (M5).
+export const urbanPointSchema = latLngSchema.refine(isInsideUrbanArea, {
+  message: 'El punto está fuera del casco urbano de Bogotá',
+});
 
 // [lng, lat], el orden de GeoJSON.
 export type LngLat = [number, number];
