@@ -11,14 +11,19 @@ import {
   type RouteRequest,
 } from '@urbansafe/shared';
 import type { EventBus } from '../../shared/events';
+import { RoutingBusyError } from '../routing';
 import { summarizeDelivery, type CompletedLeg } from './delivery-summary';
 import { generateOrder, type Order, type Random, type SnapToRoads } from './order-generator';
 import { createSimulatedRoute, type SimulatedRoute } from './position/simulated-route';
 
 // Una sesión sin comandos por este tiempo se descarta: el estado vive en memoria (una instancia).
 const IDLE_SESSION_MS = 2 * 60 * 60 * 1000;
-// Tope de memoria ante clientes que crean sesiones sin parar; la demo usa ~30.
+// Tope de memoria ante clientes que crean sesiones sin parar; la demo usa ~30. Al llegar al tope se
+// descarta la sesión quieta más vieja, para que una ráfaga no deje sin pedidos a los demás.
 const MAX_SESSIONS = 500;
+// Si la cola de ruteo está llena al llegar a la recogida, el segundo tramo se reintenta solo.
+export const LEG_RETRY_MS = 2000;
+const MAX_LEG_ATTEMPTS = 5;
 
 export type PlanRoutes = (request: RouteRequest, now?: Date) => Promise<RouteOption[] | null>;
 
@@ -29,6 +34,7 @@ export type DeliveryDeps = {
   random?: Random;
   now?: () => number;
   log?: (message: string, error?: unknown) => void;
+  maxSessions?: number;
 };
 
 type Session = {
@@ -50,7 +56,7 @@ type Session = {
   lastActivityMs: number;
 };
 
-export type DeliveryError = 'not_found' | 'invalid_state' | 'no_order';
+export type DeliveryError = 'not_found' | 'invalid_state' | 'no_order' | 'busy';
 export type DeliveryResult = { ok: true; state: DeliveryState } | { ok: false; error: DeliveryError };
 
 export type DeliveryService = ReturnType<typeof createDeliveryService>;
@@ -59,7 +65,9 @@ export function createDeliveryService(deps: DeliveryDeps) {
   const random = deps.random ?? Math.random;
   const now = deps.now ?? Date.now;
   const log = deps.log ?? ((message: string, error?: unknown) => console.error(message, error));
+  const maxSessions = deps.maxSessions ?? MAX_SESSIONS;
   const sessions = new Map<string, Session>();
+  const retryTimers = new Set<ReturnType<typeof setTimeout>>();
 
   function toState(session: Session): DeliveryState {
     return {
@@ -110,8 +118,8 @@ export function createDeliveryService(deps: DeliveryDeps) {
     } satisfies Partial<Session>);
   }
 
-  // Corre dentro de la cola de la sesión.
-  async function routeLeg(session: Session) {
+  // Corre dentro de la cola de la sesión. Con 'busy' la sesión queda en routing y decide quien llama.
+  async function routeLeg(session: Session): Promise<'done' | 'busy'> {
     Object.assign(session, { status: 'routing', options: [], chosen: null, progressM: 0, ride: null } satisfies Partial<Session>);
     publish(session);
 
@@ -121,10 +129,38 @@ export function createDeliveryService(deps: DeliveryDeps) {
       const options = await deps.planRoutes({ from: session.position, to }, new Date(now()));
       Object.assign(session, options ? { status: 'choosing', options } : { status: 'failed' });
     } catch (error) {
+      if (error instanceof RoutingBusyError) return 'busy';
       log(`No se pudieron calcular las rutas de la entrega ${session.id}`, error);
       session.status = 'failed';
     }
     publish(session);
+    return 'done';
+  }
+
+  function routeSecondLeg(session: Session, attempt = 1) {
+    void enqueue(session, async () => {
+      if (!sessions.has(session.id) || (await routeLeg(session)) === 'done') return;
+      if (attempt >= MAX_LEG_ATTEMPTS) {
+        session.status = 'failed';
+        publish(session);
+        return;
+      }
+      const timer = setTimeout(() => {
+        retryTimers.delete(timer);
+        routeSecondLeg(session, attempt + 1);
+      }, LEG_RETRY_MS);
+      retryTimers.add(timer);
+    });
+  }
+
+  function evictIdlest(): boolean {
+    let idlest: Session | undefined;
+    for (const session of sessions.values()) {
+      if (session.status === 'riding' || session.status === 'routing') continue;
+      if (!idlest || session.lastActivityMs < idlest.lastActivityMs) idlest = session;
+    }
+    if (idlest) sessions.delete(idlest.id);
+    return idlest !== undefined;
   }
 
   function arrive(session: Session) {
@@ -137,7 +173,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
       session.leg = 'to_dropoff';
       // Antes de encolar, para que el siguiente tick ya no la mueva.
       session.status = 'routing';
-      void enqueue(session, () => routeLeg(session));
+      routeSecondLeg(session);
       return;
     }
     session.status = 'delivered';
@@ -172,7 +208,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
     has: (id: string) => sessions.has(id),
 
     async create(): Promise<DeliveryResult> {
-      if (sessions.size >= MAX_SESSIONS) return fail('no_order');
+      if (sessions.size >= maxSessions && !evictIdlest()) return fail('busy');
       const generated = await generateOrder(null, deps.snapToRoads, random);
       if (!generated) return fail('no_order');
 
@@ -206,7 +242,11 @@ export function createDeliveryService(deps: DeliveryDeps) {
         // Aceptar dos veces es un reintento: devuelve las rutas ya calculadas.
         if (session.status === 'choosing' && session.leg === 'to_pickup') return ok(session);
         if (session.status !== 'offered') return fail('invalid_state');
-        await routeLeg(session);
+        if ((await routeLeg(session)) === 'busy') {
+          session.status = 'offered';
+          publish(session);
+          return fail('busy');
+        }
         return ok(session);
       }),
 
@@ -247,7 +287,11 @@ export function createDeliveryService(deps: DeliveryDeps) {
 
     start() {
       const timer = setInterval(tick, PARAMS.delivery.positionTickMs);
-      return () => clearInterval(timer);
+      return () => {
+        clearInterval(timer);
+        for (const retry of retryTimers) clearTimeout(retry);
+        retryTimers.clear();
+      };
     },
   };
 }

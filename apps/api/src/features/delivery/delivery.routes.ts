@@ -10,11 +10,14 @@ const ERROR_RESPONSES = {
   not_found: { status: 404, error: DELIVERY_ERRORS.notFound },
   invalid_state: { status: 409, error: DELIVERY_ERRORS.invalidState },
   no_order: { status: 503, error: DELIVERY_ERRORS.noOrder },
+  busy: { status: 503, error: DELIVERY_ERRORS.busy },
 } as const;
+const RETRY_AFTER_S = 2;
 
 function respond(c: Context, result: DeliveryResult, successStatus: 200 | 201 = 200) {
   if (!result.ok) {
     const { status, error } = ERROR_RESPONSES[result.error];
+    if (status === 503) c.header('Retry-After', String(RETRY_AFTER_S));
     return c.json({ error }, status);
   }
   return c.json({ state: result.state } satisfies DeliveryStateResponse, successStatus);

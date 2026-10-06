@@ -58,4 +58,6 @@ export const DELIVERY_ERRORS = {
   notFound: 'delivery_not_found',
   invalidState: 'delivery_invalid_state',
   noOrder: 'delivery_no_order',
+  // La cola de ruteo está llena: reintentar en unos segundos.
+  busy: 'delivery_busy',
 } as const;

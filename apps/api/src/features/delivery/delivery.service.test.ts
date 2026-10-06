@@ -1,7 +1,8 @@
 import { ROUTE_KINDS, type DomainEventName, type DomainEvents, type RouteOption, type RouteRequest } from '@urbansafe/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { EventBus } from '../../shared/events';
-import { createDeliveryService, type PlanRoutes } from './delivery.service';
+import { RoutingBusyError } from '../routing';
+import { createDeliveryService, LEG_RETRY_MS, type PlanRoutes } from './delivery.service';
 
 // Más que suficiente para recorrer cualquier tramo de prueba en un solo tick.
 const LONG_TICK_MS = 60 * 60 * 1000;
@@ -22,7 +23,7 @@ function fakeRoutes({ from, to }: RouteRequest): RouteOption[] {
   }));
 }
 
-function setup(planRoutes: PlanRoutes = async (request) => fakeRoutes(request)) {
+function setup(planRoutes: PlanRoutes = async (request) => fakeRoutes(request), options: { maxSessions?: number } = {}) {
   let clock = 1_000_000;
   const events: { name: DomainEventName; payload: DomainEvents[DomainEventName] }[] = [];
   const bus: EventBus = {
@@ -37,6 +38,7 @@ function setup(planRoutes: PlanRoutes = async (request) => fakeRoutes(request)) 
     random: () => 0.5,
     now: () => clock,
     log: () => {},
+    ...options,
   });
   const advance = (ms: number) => {
     clock += ms;
@@ -187,6 +189,70 @@ describe('sesión de entrega (M7, F1)', () => {
     expect(new Set(positions.map((event) => (event.payload as DomainEvents['delivery.position']).sessionId))).toEqual(
       new Set(ids),
     );
+  });
+
+  it('con la cola de ruteo llena, aceptar responde busy y el pedido sigue ofrecido', async () => {
+    const { service } = setup(async () => {
+      throw new RoutingBusyError();
+    });
+    const id = await createdId(service);
+
+    const accepted = await service.accept(id);
+
+    const after = service.get(id);
+    expect(accepted).toEqual({ ok: false, error: 'busy' });
+    expect(after.ok && after.state.status).toBe('offered');
+  });
+
+  it('si la cola está llena al llegar a la recogida, el segundo tramo se reintenta solo', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const { service, advance } = setup(async (request) => {
+        calls++;
+        if (calls === 2) throw new RoutingBusyError();
+        return fakeRoutes(request);
+      });
+      const id = await createdId(service);
+      await service.accept(id);
+      await service.chooseRoute(id, 'fastest');
+      advance(LONG_TICK_MS);
+      await vi.advanceTimersByTimeAsync(0);
+      const waiting = service.get(id);
+      expect(waiting.ok && waiting.state.status).toBe('routing');
+
+      await vi.advanceTimersByTimeAsync(LEG_RETRY_MS);
+
+      const retried = service.get(id);
+      expect(retried.ok && retried.state).toMatchObject({ status: 'choosing', leg: 'to_dropoff' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('al llegar al tope de sesiones descarta la quieta más vieja y nunca una en camino', async () => {
+    const { service, advance } = setup(undefined, { maxSessions: 2 });
+    const riding = await createdId(service);
+    await service.accept(riding);
+    await service.chooseRoute(riding, 'fastest');
+    advance(1);
+    const idle = await createdId(service);
+    advance(1);
+
+    const third = await service.create();
+
+    expect(third.ok).toBe(true);
+    expect(service.has(riding)).toBe(true);
+    expect(service.has(idle)).toBe(false);
+  });
+
+  it('si todas las sesiones están en camino, crear otra responde busy', async () => {
+    const { service } = setup(undefined, { maxSessions: 1 });
+    const riding = await createdId(service);
+    await service.accept(riding);
+    await service.chooseRoute(riding, 'fastest');
+
+    expect(await service.create()).toEqual({ ok: false, error: 'busy' });
   });
 
   it('una sesión sin comandos por dos horas se descarta', async () => {

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { ClientEvents, CreateReportBody, DeliveryStateResponse, DomainEvents, ServerEvents } from '@urbansafe/shared';
-import { sql } from 'kysely';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../shared/db';
 import { startServer } from './start-server';
 
-const POINT = { lat: 1.5, lng: 1.5 };
+// Dentro del casco urbano (los reportes lo exigen) pero en zona rural, lejos de datos reales.
+const POINT = { lat: 4.4705, lng: -74.2195 };
 const deviceId = randomUUID();
 // Con el ticker a 1 Hz, una posición llega antes de esto.
 const POSITION_WAIT_MS = 3000;
@@ -49,7 +49,13 @@ beforeAll(async () => {
   const databaseUrl = process.env['TEST_DATABASE_URL'];
   if (!databaseUrl) throw new Error('Falta TEST_DATABASE_URL en .env para las pruebas de integración');
   db = createDb({ url: databaseUrl, poolSize: 4, statementTimeoutMs: 15_000 }).db;
-  server = await startServer({ db, port: 0, routing: { db, concurrency: 2 }, backgroundJobs: false });
+  server = await startServer({
+    db,
+    port: 0,
+    routing: { db, concurrency: 2, maxQueue: 30 },
+    backgroundJobs: false,
+    trustProxy: false,
+  });
   client = await connect();
 });
 
@@ -59,7 +65,7 @@ afterAll(async () => {
   if (!db) return;
   await db
     .deleteFrom('incidents')
-    .where(sql<boolean>`ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(${POINT.lng}, ${POINT.lat}), 4326)::geography, 1000)`)
+    .where('id', 'in', db.selectFrom('community_reports').select('incident_id').where('device_id', '=', deviceId))
     .execute();
   await db.deleteFrom('reporters').where('device_id', '=', deviceId).execute();
   await db.destroy();

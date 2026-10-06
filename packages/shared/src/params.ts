@@ -34,6 +34,17 @@ export const PARAMS = {
   alert: { radiusM: 300, lookaheadM: 1000 },
   alertWindow: { reportedWithinMs: 6 * HOUR_MS, occurredWithinMs: 24 * HOUR_MS },
   reportRateLimit: { max: 5, windowMs: HOUR_MS },
+  // Tope por IP contra quien rota su deviceId o martilla el API. Holgado a propósito: en la demo
+  // ~30 personas pueden salir por la misma IP pública de una red.
+  ipRateLimit: {
+    windowMs: 10 * 60 * 1000,
+    reports: 100,
+    votes: 300,
+    routes: 300,
+    deliverySessions: 60,
+    // Aceptar y pedir otro pedido: los comandos de entrega que calculan rutas o consultan la base.
+    deliveryRouting: 300,
+  },
   initialConfidence: { news: 0.7, community: 0.3 },
   areaConfidenceFactor: { neighborhood: 0.5, locality: 0.25 },
   confidenceAdjustments: { confirm: 0.15, deny: -0.2, merge: 0.1, max: 1 },

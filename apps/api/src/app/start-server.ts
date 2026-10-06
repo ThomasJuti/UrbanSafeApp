@@ -6,11 +6,12 @@ import { createRiskService } from '../features/risk';
 import { createRoutingService } from '../features/routing';
 import type { Db } from '../shared/db';
 import { createEventBus } from '../shared/events';
+import { clientIp } from '../shared/http';
 import { createRealtime } from '../shared/realtime';
 import { createApp } from './create-app';
 
 // El ruteo usa su propio pool, con el statement_timeout del ruteo en la sesión.
-export type RoutingDeps = { db: Db; concurrency: number };
+export type RoutingDeps = { db: Db; concurrency: number; maxQueue: number };
 
 export async function startServer(deps: {
   db: Db;
@@ -19,17 +20,19 @@ export async function startServer(deps: {
   // Recálculo de riesgo por eventos y programado. Las pruebas lo apagan para no reescribir el
   // riesgo de toda la ciudad en la base compartida.
   backgroundJobs: boolean;
+  // Detrás de un proxy propio que agrega X-Forwarded-For (ver clientIp).
+  trustProxy: boolean;
 }) {
   const bus = createEventBus();
   const stopRisk = deps.backgroundJobs ? createRiskService(deps.db).start(bus) : async () => {};
-  const routing = createRoutingService(deps.routing.db, deps.routing.concurrency);
+  const routing = createRoutingService(deps.routing.db, deps.routing);
   const delivery = createDeliveryService({
     planRoutes: routing.planRoutes,
     snapToRoads: (points) => snapToRoads(deps.db, points),
     bus,
   });
   const stopTicker = delivery.start();
-  const app = createApp({ db: deps.db, bus, routing, delivery });
+  const app = createApp({ db: deps.db, bus, routing, delivery, clientKey: clientIp(deps.trustProxy) });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
     const server = serve({ fetch: app.fetch, port: deps.port }, () => resolve(server as HttpServer));
