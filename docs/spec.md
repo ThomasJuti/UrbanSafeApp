@@ -60,6 +60,14 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Privacidad (RN-03).** Estado y posición viajan solo a la sala privada de la sesión. Un socket entra a esa sala con `delivery.join` y el id de la sesión, que solo conoce la pestaña que la creó.
   - **Concurrencia.** Los comandos de una sesión van en cola: aceptar dos veces calcula las rutas una sola vez y elegir la misma ruta dos veces es un reintento. Las sesiones viven en memoria y se descartan tras 2 h sin comandos.
   - **Tiempos medidos.** Crear un pedido tarda unos 0,2 s y aceptarlo, entre 0,2 y 0,4 s, ya con la conexión caliente.
+- **Endurecimiento del API (M3, M4, M5, M7).**
+  - **Límite por IP.** Reportes, votos, `POST /api/routes` y los pedidos simulados (crear, aceptar, siguiente) tienen un límite por IP en ventana fija, además del límite por dispositivo de RN-04. Al pasarse responden 429 con `Retry-After`. La IP sale del socket; `X-Forwarded-For` solo se usa con `TRUST_PROXY=true`, y entonces se toma la última entrada, la que puso el proxy propio.
+  - **Holgura.** Los límites son amplios porque en la demo unos 30 usuarios pueden compartir la IP de una misma red. `pnpm load:routes` hace unos 190 pedidos desde una sola IP: correrlo dos veces en 10 minutos topa el límite, salvo que se reinicie el API.
+  - **Reportes en el casco urbano.** El contrato rechaza reportes fuera del casco urbano, igual que las rutas. La web avisa en vez de abrir el reporte.
+  - **Cola del ruteo acotada.** Con `ROUTING_MAX_QUEUE` pedidos esperando, el siguiente responde 503 con `Retry-After` en vez de esperar sin fin. Aceptar un pedido en ese caso lo deja ofrecido y responde 503. El segundo tramo se reintenta solo cada 2 s, hasta 5 veces. La ráfaga de 30 de `pnpm load:routes` cabe en la cola de 30 y no recibe 503.
+  - **Límite de sesiones.** Con 500 sesiones en memoria, crear otra descarta la más inactiva que no esté en camino; si todas están en camino, responde 503.
+  - **Recálculo de riesgo sin acumulación.** A lo sumo corre un lote incremental y espera otro: lo que llega durante la corrida se suma al lote que espera.
+  - **SQL de `route_between`.** La función arma su consulta con literales escapados (`%L`) en vez de interpolar texto (`%s`).
 
 ### Siguiente
 
@@ -67,6 +75,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
+- **Verificar el certificado de Supabase.** Hoy la conexión a la base va cifrada pero sin validar la CA. Falta agregar el certificado del proyecto y conectar con `verify-full`.
 
 ## 1. Visión
 
@@ -300,6 +309,8 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
 | Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
+| Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
+| Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
 | Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
