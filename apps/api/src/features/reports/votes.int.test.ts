@@ -53,7 +53,11 @@ function newDevice(): string {
 function recordingBus() {
   const events: { name: DomainEventName; incidentId: string; confidence: number }[] = [];
   const bus: EventBus = {
-    publish: (name, { incident }) => events.push({ name, incidentId: incident.id, confidence: incident.confidence }),
+    publish: (name, payload) => {
+      if ('incident' in payload) {
+        events.push({ name, incidentId: payload.incident.id, confidence: payload.incident.confidence });
+      }
+    },
     subscribe: () => () => {},
   };
   return { bus, events };

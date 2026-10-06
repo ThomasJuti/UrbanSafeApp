@@ -23,6 +23,14 @@ export const PARAMS = {
   routeClipMarginsM: [2000, 6000],
   // bajo < low ≤ medio < high ≤ alto
   routeRiskLevels: { low: 0.2, high: 0.5 },
+  delivery: {
+    // Distancias en línea recta del pedido simulado: domiciliario → recogida y recogida → entrega.
+    pickupDistanceM: { min: 1000, max: 4000 },
+    dropoffDistanceM: { min: 2000, max: 6000 },
+    speedMultipliers: [1, 5, 10, 20],
+    defaultSpeedMultiplier: 10,
+    positionTickMs: 1000,
+  },
   alert: { radiusM: 300, lookaheadM: 1000 },
   alertWindow: { reportedWithinMs: 6 * HOUR_MS, occurredWithinMs: 24 * HOUR_MS },
   reportRateLimit: { max: 5, windowMs: HOUR_MS },
