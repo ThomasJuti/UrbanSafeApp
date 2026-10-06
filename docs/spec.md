@@ -60,6 +60,13 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Privacidad (RN-03).** Estado y posición viajan solo a la sala privada de la sesión. Un socket entra a esa sala con `delivery.join` y el id de la sesión, que solo conoce la pestaña que la creó.
   - **Concurrencia.** Los comandos de una sesión van en cola: aceptar dos veces calcula las rutas una sola vez y elegir la misma ruta dos veces es un reintento. Las sesiones viven en memoria y se descartan tras 2 h sin comandos.
   - **Tiempos medidos.** Crear un pedido tarda unos 0,2 s y aceptarlo, entre 0,2 y 0,4 s, ya con la conexión caliente.
+  - **Versión.** Cada cambio publicado sube `version`. El cliente se queda con la más nueva si la respuesta HTTP y el socket llegan desordenados.
+- **Simulador de pedidos, parte 2 (M7 en la web; F1 pasos 1 a 4, 6 y 7).**
+  - **Flujo.** `/domiciliario` crea o recupera la sesión de la pestaña, muestra el pedido, acepta, ofrece las 3 rutas de cada tramo, avanza la posición y cierra con el resumen (tiempo extra, exposición evitada, incidentes evitados).
+  - **Elección.** Se elige tocando la tarjeta o la línea; "Ir por esta" manda solo el tipo de ruta.
+  - **Velocidad.** 1×, 5×, 10× o 20×, 10× por defecto.
+  - **Privacidad (RN-03).** El id vive en `sessionStorage` de la pestaña. El socket entra a la sala privada con `delivery.join`; al recargar se vuelve a unir.
+  - **Mapa.** Sigue mostrando los incidentes de la ciudad. No hay planner manual: el pedido lo sortea el servidor.
 - **Endurecimiento del API (M3, M4, M5, M7).**
   - **Límite por IP.** Reportes, votos, `POST /api/routes` y los pedidos simulados (crear, aceptar, siguiente) tienen un límite por IP en ventana fija, además del límite por dispositivo de RN-04. Al pasarse responden 429 con `Retry-After`. La IP sale del socket; `X-Forwarded-For` solo se usa con `TRUST_PROXY=true`, y entonces se toma la última entrada, la que puso el proxy propio.
   - **Holgura.** Los límites son amplios porque en la demo unos 30 usuarios pueden compartir la IP de una misma red. `pnpm load:routes` hace unos 190 pedidos desde una sola IP: correrlo dos veces en 10 minutos topa el límite, salvo que se reinicie el API.
@@ -71,7 +78,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### Siguiente
 
-- **Simulador de pedidos, parte 2 (M7 en la web).** El flujo del pedido en `/domiciliario`, la prueba de carga con 30 sesiones y la medición del criterio "Valor de la ruta segura".
+- **Simulador de pedidos, parte 3 (M7).** Prueba de carga con 30 sesiones y la medición del criterio "Valor de la ruta segura".
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
