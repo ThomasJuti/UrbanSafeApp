@@ -1,3 +1,4 @@
+import { BaseRiskLayer } from '../features/base-risk';
 import { IncidentsLayer, INCIDENT_LAYER_IDS } from '../features/incidents';
 import { NicknameForm, useIdentity } from '../features/nickname';
 import { IncidentVote, ReportComposer } from '../features/reports';
@@ -10,6 +11,7 @@ export function ReportPage() {
   return (
     <>
       <BaseMap>
+        <BaseRiskLayer />
         <IncidentsLayer
           renderDetails={
             identity ? (incident) => <IncidentVote key={incident.id} incidentId={incident.id} reporter={identity} /> : undefined
