@@ -31,6 +31,7 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm db:migrate` | Aplica migraciones pendientes (dbmate) |
 | `pnpm db:new <nombre>` | Crea una migración nueva |
 | `pnpm db:seed` | Recarga los datos de prueba de `db/seeds` |
+| `pnpm db:import-graph` | Reemplaza el grafo vial con las vías del casco urbano descargadas de OSM (Overpass) |
 | `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
@@ -40,7 +41,7 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 ```
 apps/
   api/src/
-    app/            # arranque: servidor, registro de rutas, scheduler
+    app/            # arranque: servidor, registro de rutas, scheduler, importaciones
     features/       # una carpeta por feature (ver abajo)
     shared/         # config, db, bus de eventos, realtime, logger
   web/src/
@@ -54,7 +55,7 @@ db/
   migrations/       # SQL versionado
   functions/        # funciones SQL de riesgo (RN-06, RN-07, RN-10, RN-11)
   seeds/            # datos de prueba
-scripts/            # importación de OSM y datos abiertos
+scripts/            # tareas sueltas; las importaciones viven en api/src/app
 docs/spec.md
 ```
 
@@ -67,7 +68,7 @@ docs/spec.md
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite (RN-04), deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Pendiente |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Parcial: grafo de OSM importado y ruta más rápida con recorte del grafo y límite de concurrencia. Faltan las rutas balanceada y segura (RN-07) |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
 | `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
 

@@ -16,6 +16,8 @@ export const PARAMS = {
   },
   routeAlpha: { fastest: 0, balanced: 1, safest: 5 },
   motorcycleSpeedKmh: 25,
+  urbanBbox: { minLng: -74.23, minLat: 4.46, maxLng: -73.99, maxLat: 4.84 },
+  routeClipMarginsM: [2000, 6000],
   // bajo < low ≤ medio < high ≤ alto
   routeRiskLevels: { low: 0.2, high: 0.5 },
   alert: { radiusM: 300, lookaheadM: 1000 },

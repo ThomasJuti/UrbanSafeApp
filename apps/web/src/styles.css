@@ -250,6 +250,23 @@ body,
   color: #ffffff;
 }
 
+.route-sheet p {
+  margin: 0;
+}
+
+.route-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.route-summary strong {
+  font-size: 22px;
+}
+
+.route-summary span {
+  color: #4b5563;
+}
+
 .sheet-actions {
   display: flex;
   justify-content: flex-end;

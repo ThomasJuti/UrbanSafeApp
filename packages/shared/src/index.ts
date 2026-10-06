@@ -5,3 +5,4 @@ export * from './incident';
 export * from './events';
 export * from './contracts/incidents';
 export * from './contracts/reports';
+export * from './contracts/routes';

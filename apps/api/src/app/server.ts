@@ -9,7 +9,7 @@ const { db } = createDb({
   statementTimeoutMs: config.dbStatementTimeoutMs,
 });
 
-const server = await startServer({ db, port: config.port });
+const server = await startServer({ db, port: config.port, routing: config.routing });
 console.log(`API escuchando en http://localhost:${server.port}`);
 
 async function shutdown() {
