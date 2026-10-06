@@ -32,6 +32,7 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm db:new <nombre>` | Crea una migración nueva |
 | `pnpm db:seed` | Recarga los datos de prueba de `db/seeds` |
 | `pnpm db:import-graph` | Reemplaza el grafo vial con las vías del casco urbano descargadas de OSM (Overpass) |
+| `pnpm db:import-base-risk` | Recalcula el riesgo base por localidad con el último corte de datos abiertos (M2) |
 | `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
@@ -47,7 +48,7 @@ apps/
   web/src/
     app/            # arranque: router, providers
     pages/          # /domiciliario (M7) y /reportar (M8); solo componen features
-    features/       # incidents, reports, routing, alerts, delivery, nickname
+    features/       # incidents, base-risk, reports, routing, alerts, delivery, nickname
     shared/         # mapa base, cliente HTTP, socket, UI genérica
 packages/
   shared/src/       # tipos y esquemas compartidos: Incidente, catálogo, parámetros, contratos, eventos
@@ -65,7 +66,7 @@ docs/spec.md
 |---|---|---|
 | `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes de la comunidad; falta la fusión con noticias |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
-| `open-data` | M2: `RiesgoBaseZona` por localidad | Pendiente |
+| `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL y lectura para el mapa. Falta programar la revisión mensual |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite (RN-04), deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Parcial: grafo de OSM importado y ruta más rápida con recorte del grafo y límite de concurrencia. Faltan las rutas balanceada y segura (RN-07) |

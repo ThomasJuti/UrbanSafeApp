@@ -28,10 +28,16 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Límites.** Corre con su propio `statement_timeout` y con 4 cálculos simultáneos como máximo.
   - **Tiempos medidos.** En la base, entre 80 y 280 ms por ruta; desde local, de 0,6 a 0,9 s en total, dominado por los viajes de ida y vuelta a São Paulo.
   - **Vista.** `/domiciliario` permite tocar el origen y el destino, dibuja la ruta y muestra la distancia y el tiempo.
+- **Riesgo base por localidad (M2, `RiesgoBaseZona`).**
+  - **Importación.** `pnpm db:import-base-risk` descarga Delito de Alto Impacto por localidad y reemplaza `locality_base_risk` en una transacción. El área y la normalización se calculan en SQL.
+  - **Periodo.** Hoy usa enero a agosto de 2026 y quedan 20 localidades.
+  - **Lectura.** `GET /api/base-risk` devuelve las geometrías simplificadas (unos 50 KB) con una hora de caché.
+  - **Mapa.** `/reportar` pinta cada localidad según su riesgo, debajo de las etiquetas, con una leyenda.
+  - **Limitación.** En Chapinero, Santa Fe, Usaquén y las localidades del sur, el área incluye cerros y zona rural, así que su tasa queda más baja que la del casco urbano.
 
 ### Siguiente
 
-- **Riesgo base por localidad (M2).** Datos abiertos agregados por localidad, también pintados en `/reportar`.
+- **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Riesgo por tramo y las 3 rutas (M4, M5, RN-07).** Riesgo precalculado por tramo, rutas balanceada y segura con su nivel de riesgo e incidentes cercanos, y la prueba de carga del presupuesto de 1,5 s.
 
 ## 1. Visión
@@ -86,11 +92,12 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### M2 — Datos abiertos oficiales
 - Fuente: **Delito de Alto Impacto Bogotá D.C.**, de la Secretaría Distrital de Seguridad, Convivencia y Justicia (https://datosabiertos.bogota.gov.co/dataset/delito-de-alto-impacto-bogota-d-c), en GeoJSON.
-- Granularidad: por localidad (2018–2024) y por UPZ (2018–2022), agregada por mes. No incluye hora del día ni coordenadas exactas.
+- Granularidad: por localidad, con un total por año desde 2018; el año en curso trae solo los meses publicados (por ejemplo, enero a agosto). No incluye hora del día ni coordenadas exactas. Se descarga del servicio oficial de la Secretaría (Esri REST), cuya URL no cambia con cada publicación.
 - Uso: riesgo base por localidad (qué zonas son históricamente más peligrosas). No aporta patrón horario ni alertas.
-- Se usan solo las categorías de delitos que ocurren en vía pública.
+- Se usan solo las categorías de delitos que ocurren en vía pública: homicidios, lesiones personales y hurto a personas, de automotores, de motocicletas, de bicicletas y de celulares. Quedan fuera el hurto a residencias y a comercio, los delitos sexuales y la violencia intrafamiliar.
 - Como son conteos agregados y no hechos individuales, no se convierten en `Incidente`: se guardan como `RiesgoBaseZona` (sección 4; excepción explícita a RN-01).
-- Cálculo del riesgo base: delitos de los últimos 12 meses disponibles divididos por el área de la localidad (delitos/km²), normalizados por la localidad con la tasa más alta, de modo que queda en 0–1.
+- Cálculo del riesgo base: delitos del periodo más reciente publicado (el año en curso, hasta el mes de corte) divididos por el área de la localidad (delitos/km²), normalizados por la localidad con la tasa más alta, de modo que queda en 0–1. Como se normaliza, no importa que el periodo tenga menos de 12 meses.
+- La zona "Sin Localización" del dataset no tiene geometría y se descarta.
 - Importación inicial y revisión mensual de actualizaciones.
 - **Limitación conocida:** ninguna fuente oficial disponible ofrece hora ni coordenadas exactas; la precisión espacial y el patrón horario dependen de las noticias (M1) y de los reportes comunitarios (M3).
 
@@ -220,7 +227,7 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   |---|---|
   | Horas | Alertas en tiempo real (M6) |
   | ~1 semana, con decaimiento | Riesgo reciente de tramos (M4, M5) |
-  | 12 meses, por localidad | Riesgo base a partir de datos abiertos (M2) |
+  | Periodo más reciente publicado (el año en curso), por localidad | Riesgo base a partir de datos abiertos (M2) |
   | 8 semanas, por localidad y franja horaria, sin decaimiento | Multiplicador horario a partir de noticias y reportes comunitarios (RN-11) |
 
 - **RN-06 · Peso de un incidente.** `peso = gravedad × confianza × e^(−antigüedad/τ)`, con τ ≈ 3 días (por ajustar). No hay corte abrupto; los incidentes de más de una semana tienen un peso despreciable para el riesgo reciente.
