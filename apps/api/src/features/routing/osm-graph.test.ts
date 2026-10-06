@@ -1,6 +1,6 @@
-import { PARAMS } from '@urbansafe/shared';
+import { haversineM, PARAMS } from '@urbansafe/shared';
 import { describe, expect, it } from 'vitest';
-import { buildRoadEdges, directionOf, haversineM, isRideable, type OsmNode, type OsmWay } from './osm-graph';
+import { buildRoadEdges, directionOf, isRideable, type OsmNode, type OsmWay } from './osm-graph';
 
 function nodeMap(list: [number, number, number][]): Map<number, OsmNode> {
   return new Map(list.map(([id, lon, lat]) => [id, { id, lon, lat }]));

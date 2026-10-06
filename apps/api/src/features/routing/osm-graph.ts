@@ -1,4 +1,4 @@
-import { PARAMS } from '@urbansafe/shared';
+import { haversineM, PARAMS } from '@urbansafe/shared';
 
 export type OsmTags = Record<string, string>;
 export type OsmWay = { id: number; nodes: number[]; tags: OsmTags };
@@ -37,7 +37,6 @@ const BLOCKED = new Set(['no', 'private']);
 const ALLOWED = new Set(['yes', 'designated', 'permissive', 'destination']);
 const IMPLIED_ONEWAY = new Set(['motorway', 'motorway_link']);
 const UNREACHABLE = -1;
-const EARTH_RADIUS_M = 6_371_008.8;
 
 export function isRideable(tags: OsmTags): boolean {
   const highway = tags['highway'];
@@ -57,14 +56,6 @@ export function directionOf(tags: OsmTags): Direction {
   if (oneway === 'no' || oneway === 'false' || oneway === '0') return 'both';
   if (tags['junction'] === 'roundabout' || tags['junction'] === 'circular') return 'forward';
   return IMPLIED_ONEWAY.has(tags['highway'] ?? '') ? 'forward' : 'both';
-}
-
-export function haversineM(a: [number, number], b: [number, number]): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b[1] - a[1]);
-  const dLng = toRad(b[0] - a[0]);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
 }
 
 const metersPerSecond = (PARAMS.motorcycleSpeedKmh * 1000) / 3600;

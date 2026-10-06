@@ -6,6 +6,34 @@ export const latLngSchema = z.object({
 });
 export type LatLng = z.infer<typeof latLngSchema>;
 
+// [lng, lat], el orden de GeoJSON.
+export type LngLat = [number, number];
+
+const EARTH_RADIUS_M = 6_371_008.8;
+
+export function haversineM(a: LngLat, b: LngLat): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b[1] - a[1]);
+  const dLng = toRad(b[0] - a[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
+}
+
+// Punto a `distanceM` de `from` en el rumbo dado (radianes, 0 = norte, en sentido horario).
+export function destinationPoint(from: LatLng, distanceM: number, bearingRad: number): LatLng {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+  const angular = distanceM / EARTH_RADIUS_M;
+  const lat1 = toRad(from.lat);
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angular) + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearingRad),
+  );
+  const lng2 =
+    toRad(from.lng) +
+    Math.atan2(Math.sin(bearingRad) * Math.sin(angular) * Math.cos(lat1), Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2));
+  return { lat: toDeg(lat2), lng: toDeg(lng2) };
+}
+
 export const bboxSchema = z
   .string()
   .transform((value, ctx) => {

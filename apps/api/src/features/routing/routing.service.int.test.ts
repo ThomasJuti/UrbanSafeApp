@@ -1,7 +1,6 @@
-import { PARAMS } from '@urbansafe/shared';
+import { haversineM, PARAMS } from '@urbansafe/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
-import { haversineM } from './osm-graph';
 import { createRoutingService } from './routing.service';
 
 // Usa el grafo real de Bogotá: requiere haber corrido `pnpm db:import-graph` en la base de pruebas.
