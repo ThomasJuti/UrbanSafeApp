@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { latLngSchema, type LatLng } from '../geo';
 import { PARAMS } from '../params';
+import { RISK_LEVELS } from '../risk';
 
 export function isInsideUrbanArea({ lat, lng }: LatLng): boolean {
   const box = PARAMS.urbanBbox;
@@ -21,6 +22,10 @@ export const routeOptionSchema = z.object({
   kind: z.enum(ROUTE_KINDS),
   lengthM: z.number().nonnegative(),
   durationS: z.number().nonnegative(),
+  // Promedio de riesgo(tramo, hora) ponderado por tiempo de recorrido (M5).
+  riskScore: z.number().min(0).max(1),
+  riskLevel: z.enum(RISK_LEVELS),
+  nearbyIncidentIds: z.array(z.string()),
   // [lng, lat], el orden de GeoJSON, para pasarlo directo a MapLibre.
   path: z.array(z.tuple([z.number(), z.number()])).min(2),
 });

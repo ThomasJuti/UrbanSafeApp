@@ -8,13 +8,24 @@ const { db } = createDb({
   poolSize: config.dbPoolSize,
   statementTimeoutMs: config.dbStatementTimeoutMs,
 });
+// Una conexión por ruteo en curso: el límite de concurrencia ya deja en cola el resto.
+const { db: routingDb } = createDb({
+  url: config.databaseUrl,
+  poolSize: config.routing.concurrency,
+  statementTimeoutMs: config.routing.statementTimeoutMs,
+});
 
-const server = await startServer({ db, port: config.port, routing: config.routing });
+const server = await startServer({
+  db,
+  port: config.port,
+  routing: { db: routingDb, concurrency: config.routing.concurrency },
+  backgroundJobs: true,
+});
 console.log(`API escuchando en http://localhost:${server.port}`);
 
 async function shutdown() {
   await server.close();
-  await db.destroy();
+  await Promise.all([db.destroy(), routingDb.destroy()]);
   process.exit(0);
 }
 

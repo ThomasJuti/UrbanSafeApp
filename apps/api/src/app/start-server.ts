@@ -1,14 +1,22 @@
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
-import type { RoutingConfig } from '../shared/config';
+import { createRiskService } from '../features/risk';
 import type { Db } from '../shared/db';
 import { createEventBus } from '../shared/events';
 import { createRealtime } from '../shared/realtime';
-import { createApp } from './create-app';
+import { createApp, type RoutingDeps } from './create-app';
 
-export async function startServer(deps: { db: Db; port: number; routing: RoutingConfig }) {
+export async function startServer(deps: {
+  db: Db;
+  port: number;
+  routing: RoutingDeps;
+  // Recálculo de riesgo por eventos y programado. Las pruebas lo apagan para no reescribir el
+  // riesgo de toda la ciudad en la base compartida.
+  backgroundJobs: boolean;
+}) {
   const bus = createEventBus();
+  const stopRisk = deps.backgroundJobs ? createRiskService(deps.db).start(bus) : async () => {};
   const app = createApp({ db: deps.db, bus, routing: deps.routing });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
@@ -21,7 +29,10 @@ export async function startServer(deps: { db: Db; port: number; routing: Routing
 
   return {
     port: (httpServer.address() as AddressInfo).port,
-    // io.close() también cierra el servidor HTTP.
-    close: () => realtime.close(),
+    close: async () => {
+      // io.close() también cierra el servidor HTTP.
+      await realtime.close();
+      await stopRisk();
+    },
   };
 }

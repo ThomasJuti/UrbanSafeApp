@@ -17,7 +17,7 @@ beforeAll(async () => {
   const url = process.env['TEST_DATABASE_URL'];
   if (!url) throw new Error('Falta TEST_DATABASE_URL en .env para las pruebas de integración');
   db = createDb({ url, poolSize: 2, statementTimeoutMs: 15_000 }).db;
-  server = await startServer({ db, port: 0, routing: { statementTimeoutMs: 3000, concurrency: 2 } });
+  server = await startServer({ db, port: 0, routing: { db, concurrency: 2 }, backgroundJobs: false });
   client = io(`http://localhost:${server.port}`, { transports: ['websocket'] });
   await new Promise<void>((resolve) => client.on('connect', resolve));
 });
