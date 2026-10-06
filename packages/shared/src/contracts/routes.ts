@@ -1,16 +1,6 @@
 import { z } from 'zod';
-import { latLngSchema, type LatLng } from '../geo';
-import { PARAMS } from '../params';
+import { urbanPointSchema } from '../geo';
 import { RISK_LEVELS } from '../risk';
-
-export function isInsideUrbanArea({ lat, lng }: LatLng): boolean {
-  const box = PARAMS.urbanBbox;
-  return lng >= box.minLng && lng <= box.maxLng && lat >= box.minLat && lat <= box.maxLat;
-}
-
-const urbanPointSchema = latLngSchema.refine(isInsideUrbanArea, {
-  message: 'El punto está fuera del casco urbano de Bogotá',
-});
 
 export const routeRequestSchema = z.object({ from: urbanPointSchema, to: urbanPointSchema });
 export type RouteRequest = z.infer<typeof routeRequestSchema>;
@@ -34,4 +24,5 @@ export type RouteOption = z.infer<typeof routeOptionSchema>;
 export const routeResponseSchema = z.object({ routes: z.array(routeOptionSchema) });
 export type RouteResponse = z.infer<typeof routeResponseSchema>;
 
-export const ROUTE_ERRORS = { noRoute: 'no_route' } as const;
+// busy: la cola de ruteo está llena (503).
+export const ROUTE_ERRORS = { noRoute: 'no_route', busy: 'routing_busy' } as const;

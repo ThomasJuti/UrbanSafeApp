@@ -1,8 +1,7 @@
-import { PARAMS } from '@urbansafe/shared';
+import { haversineM, PARAMS } from '@urbansafe/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
-import { haversineM } from './osm-graph';
-import { createRoutingService } from './routing.service';
+import { createRoutingService, RoutingBusyError } from './routing.service';
 
 // Usa el grafo real de Bogotá: requiere haber corrido `pnpm db:import-graph` en la base de pruebas.
 const chapinero = { lat: 4.6486, lng: -74.0628 };
@@ -28,7 +27,7 @@ afterAll(async () => {
 
 describe('planRoutes sobre el grafo de Bogotá (M5)', () => {
   it('la ruta más rápida va de punta a punta, con el tiempo a la velocidad promedio', async () => {
-    const service = createRoutingService(db, 2);
+    const service = createRoutingService(db, { concurrency: 2, maxQueue: 30 });
 
     const routes = await service.planRoutes({ from: chapinero, to: kennedy });
     const fastest = routes?.[0];
@@ -44,7 +43,7 @@ describe('planRoutes sobre el grafo de Bogotá (M5)', () => {
   });
 
   it('devuelve rápida, balanceada y segura; la segura nunca es más riesgosa ni la rápida más lenta (RN-07)', async () => {
-    const service = createRoutingService(db, 3);
+    const service = createRoutingService(db, { concurrency: 3, maxQueue: 30 });
 
     const routes = (await service.planRoutes({ from: chapinero, to: kennedy }))!;
     const [fastest, balanced, safest] = routes;
@@ -56,10 +55,22 @@ describe('planRoutes sobre el grafo de Bogotá (M5)', () => {
   });
 
   it('con más pedidos que el límite de concurrencia, los que sobran esperan y todos terminan', async () => {
-    const service = createRoutingService(db, 2);
+    const service = createRoutingService(db, { concurrency: 2, maxQueue: 30 });
 
     const results = await Promise.all(Array.from({ length: 3 }, () => service.planRoutes({ from: chapinero, to: kennedy })));
 
     expect(results.every((routes) => routes?.length === 3)).toBe(true);
+  });
+
+  it('con la cola llena rechaza enseguida en vez de encolar sin fin', async () => {
+    const service = createRoutingService(db, { concurrency: 1, maxQueue: 1 });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, () => service.planRoutes({ from: chapinero, to: kennedy })),
+    );
+
+    const busy = results.filter((result) => result.status === 'rejected' && result.reason instanceof RoutingBusyError);
+    expect(busy.length).toBeGreaterThan(0);
+    expect(results.some((result) => result.status === 'fulfilled')).toBe(true);
   });
 });

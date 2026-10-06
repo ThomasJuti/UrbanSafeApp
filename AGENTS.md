@@ -47,7 +47,7 @@ apps/
   api/src/
     app/            # arranque: servidor, registro de rutas, scheduler, importaciones
     features/       # una carpeta por feature (ver abajo)
-    shared/         # config, db, bus de eventos, realtime, logger
+    shared/         # config, db, http (límite por IP), bus de eventos, realtime, logger
   web/src/
     app/            # arranque: router, providers
     pages/          # /domiciliario (M7) y /reportar (M8); solo componen features
@@ -69,11 +69,11 @@ docs/spec.md
 | `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes de la comunidad; falta la fusión con noticias |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL y lectura para el mapa. Falta programar la revisión mensual |
-| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite (RN-04), deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
-| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus, completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
+| `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite por dispositivo (RN-04) y por IP, solo dentro del casco urbano, deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
+| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse) y límite por IP; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
-| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
+| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Parcial: sesión en memoria con los dos tramos, ticker global, ruta simulada como `PositionSource`, resumen, sala privada por sesión, tope de sesiones y reintento del segundo tramo si el ruteo está lleno. Falta la web |
 
 ## Reglas de arquitectura (feature-based)
 
@@ -109,7 +109,7 @@ Solo se crean los archivos que la feature necesita.
 
 - **RN-01:** toda fuente de hechos individuales (noticias, comunidad) se normaliza a `Incidente` antes de usarse. Los datos abiertos son la única excepción y se guardan como `RiesgoBaseZona`.
 - **RN-03, privacidad:**
-  - La posición y la ruta de un domiciliario solo se emiten a **su propia sala** de Socket.IO.
+  - La posición y la ruta de un domiciliario solo se emiten a **su propia sala** de Socket.IO (`delivery:<sesión>`). Un socket entra con `delivery.join` y el id de la sesión, que funciona como credencial.
   - Los incidentes van a una sala pública.
   - Nunca hacer broadcast de posiciones ni exponer rutas en endpoints públicos.
   - La web `/reportar` jamás recibe datos de domiciliarios.
@@ -165,13 +165,13 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 ### Ruteo (M5)
 - El grafo se **recorta** a una caja alrededor de origen y destino, y el riesgo por tramo está **precalculado**.
 - Las 3 rutas se calculan **en serie dentro de una sola consulta**. El Dijkstra es pura CPU de la base: en paralelo se estorban y tardaban 2,3 s en vez de 0,7 s.
-- **Límite de concurrencia** para el ruteo (`p-limit`), para que 30 pedidos simultáneos no saturen la base. Las solicitudes que excedan el límite esperan en cola, no fallan.
+- **Límite de concurrencia** para el ruteo (`p-limit`), para que 30 pedidos simultáneos no saturen la base. Las solicitudes que excedan el límite esperan en cola, hasta `ROUTING_MAX_QUEUE` en espera. Más allá, `RoutingBusyError` y 503 con `Retry-After`: quien llama decide si reintenta (`delivery` reintenta solo el segundo tramo).
 - **Caché corta** de resultados por (nodo origen, nodo destino, versión del riesgo). Se invalida cuando cambia el riesgo de la zona. Pendiente.
 - Tras reescribir el riesgo de toda la ciudad, compactar `road_edges` (`VACUUM FULL`): la tabla duplica su tamaño y las rutas en frío se vuelven lentas.
 
 ### Modelo de riesgo (M4)
 - **Recálculo incremental:** solo los tramos cercanos al incidente nuevo, nunca toda la ciudad.
-- **Agrupar ráfagas.** Una corrida de ingesta que inserta muchos incidentes dispara un solo recálculo, con debounce o cola.
+- **Agrupar ráfagas.** Una corrida de ingesta que inserta muchos incidentes dispara un solo recálculo, con debounce o cola. Mientras corre un lote, lo nuevo se acumula en el siguiente: nunca se encolan lotes sin límite.
 - **Nunca dos recálculos a la vez sobre lo mismo.** Se garantiza con una cola de un solo consumidor o un advisory lock de Postgres. `risk` usa los dos.
 - **Las pruebas no arrancan los trabajos de fondo** (`backgroundJobs: false`): recalcularían el riesgo de toda la ciudad en la base compartida.
 
@@ -186,6 +186,10 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 - **Límite de reportes atómico.** La verificación y el registro ocurren en la misma operación, sin chequear y luego insertar.
 - **Deduplicación y fusión dentro de una transacción.** Los candidatos se bloquean con `SELECT ... FOR UPDATE` (o con un advisory lock por celda geográfica) para que dos reportes simultáneos del mismo hecho no creen dos incidentes.
 - **Endpoints idempotentes** donde haya reintentos del cliente (ID de cliente en el reporte).
+
+### Límite por IP
+- **Todo endpoint que escribe o que cuesta CPU de la base lleva límite por IP** (`shared/http`, registrado en `app/create-app.ts`). Los límites viven en `params.ipRateLimit`. Es en memoria, válido con una sola instancia.
+- **La IP sale del socket.** `X-Forwarded-For` solo se lee con `TRUST_PROXY=true`, y se toma la última entrada (la del proxy propio); la primera la controla el cliente. El proxy de Vite manda `X-Forwarded-For`.
 
 ### Tiempo real (Socket.IO)
 - **Estado inicial por HTTP y cambios por socket.** El mapa carga los incidentes de su zona por HTTP; el socket envía solo deltas (`incident.created`, `incident.updated`), nunca el mapa completo.

@@ -18,8 +18,9 @@ const { db: routingDb } = createDb({
 const server = await startServer({
   db,
   port: config.port,
-  routing: { db: routingDb, concurrency: config.routing.concurrency },
+  routing: { db: routingDb, concurrency: config.routing.concurrency, maxQueue: config.routing.maxQueue },
   backgroundJobs: true,
+  trustProxy: config.trustProxy,
 });
 console.log(`API escuchando en http://localhost:${server.port}`);
 

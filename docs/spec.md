@@ -51,10 +51,31 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
     - **Sostenida.** 30 usuarios pidiendo cada 5 a 15 s durante 60 s, con trayectos de 2 a 8 km: p50 474 ms y p95 1 380 ms. **Cumple** el presupuesto de 1,5 s.
     - **Ráfaga.** Los 30 pedidos a la vez dan p95 3,5 s. El límite es la CPU de la base, no la cola del API: subir la concurrencia a 8 casi no cambia el resultado.
 
+- **Simulador de pedidos, parte 1 (M7 en el servidor; F1 pasos 1 a 4, 6 y 7; RN-03).**
+  - **Pedido.** `POST /api/delivery/sessions` crea una sesión con un pedido al azar: recogida y entrega ajustadas al vértice del grafo más cercano. Si un punto queda a más de 200 m de una calle, se descarta. El primer pedido también sortea dónde arranca el domiciliario; los siguientes salen de donde terminó.
+  - **Tramos.** Aceptar calcula las 3 rutas del tramo hacia la recogida. Al llegar se calculan las del tramo hacia la entrega, con el riesgo de la hora en que empieza cada tramo. El cliente elige por tipo de ruta; nunca manda geometría.
+  - **Movimiento.** Un único ticker a 1 Hz avanza todas las sesiones sobre la ruta elegida, a la velocidad promedio por el multiplicador.
+  - **Fuente de posición.** La posición sale de una interfaz `PositionSource`; hoy la implementa la ruta simulada.
+  - **Resumen.** Tiempo extra, exposición evitada e incidentes evitados frente a la ruta más rápida de cada tramo.
+  - **Privacidad (RN-03).** Estado y posición viajan solo a la sala privada de la sesión. Un socket entra a esa sala con `delivery.join` y el id de la sesión, que solo conoce la pestaña que la creó.
+  - **Concurrencia.** Los comandos de una sesión van en cola: aceptar dos veces calcula las rutas una sola vez y elegir la misma ruta dos veces es un reintento. Las sesiones viven en memoria y se descartan tras 2 h sin comandos.
+  - **Tiempos medidos.** Crear un pedido tarda unos 0,2 s y aceptarlo, entre 0,2 y 0,4 s, ya con la conexión caliente.
+- **Endurecimiento del API (M3, M4, M5, M7).**
+  - **Límite por IP.** Reportes, votos, `POST /api/routes` y los pedidos simulados (crear, aceptar, siguiente) tienen un límite por IP en ventana fija, además del límite por dispositivo de RN-04. Al pasarse responden 429 con `Retry-After`. La IP sale del socket; `X-Forwarded-For` solo se usa con `TRUST_PROXY=true`, y entonces se toma la última entrada, la que puso el proxy propio.
+  - **Holgura.** Los límites son amplios porque en la demo unos 30 usuarios pueden compartir la IP de una misma red. `pnpm load:routes` hace unos 190 pedidos desde una sola IP: correrlo dos veces en 10 minutos topa el límite, salvo que se reinicie el API.
+  - **Reportes en el casco urbano.** El contrato rechaza reportes fuera del casco urbano, igual que las rutas. La web avisa en vez de abrir el reporte.
+  - **Cola del ruteo acotada.** Con `ROUTING_MAX_QUEUE` pedidos esperando, el siguiente responde 503 con `Retry-After` en vez de esperar sin fin. Aceptar un pedido en ese caso lo deja ofrecido y responde 503. El segundo tramo se reintenta solo cada 2 s, hasta 5 veces. La ráfaga de 30 de `pnpm load:routes` cabe en la cola de 30 y no recibe 503.
+  - **Límite de sesiones.** Con 500 sesiones en memoria, crear otra descarta la más inactiva que no esté en camino; si todas están en camino, responde 503.
+  - **Recálculo de riesgo sin acumulación.** A lo sumo corre un lote incremental y espera otro: lo que llega durante la corrida se suma al lote que espera.
+  - **SQL de `route_between`.** La función arma su consulta con literales escapados (`%L`) en vez de interpolar texto (`%s`).
+
 ### Siguiente
+
+- **Simulador de pedidos, parte 2 (M7 en la web).** El flujo del pedido en `/domiciliario`, la prueba de carga con 30 sesiones y la medición del criterio "Valor de la ruta segura".
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
+- **Verificar el certificado de Supabase.** Hoy la conexión a la base va cifrada pero sin validar la CA. Falta agregar el certificado del proyecto y conectar con `verify-full`.
 
 ## 1. Visión
 
@@ -282,10 +303,14 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Casco urbano (M5) | Longitud −74,23 a −73,99 · Latitud 4,46 a 4,84 | Deja por fuera Sumapaz y la zona rural |
 | Recorte del grafo para rutear (M5) | Caja de origen y destino + 2 km por lado; si no hay ruta, + 6 km | La ruta casi nunca se sale de esa caja y el Dijkstra trabaja sobre mucho menos grafo |
 | Nivel de riesgo de ruta (M5) | Bajo < 0,2 ≤ medio < 0,5 ≤ alto | Clasificación que ve el domiciliario |
+| Pedido simulado (M7) | Recogida a 1–4 km del domiciliario y entrega a 2–6 km de la recogida, en línea recta | Trayectos típicos de domicilio en moto |
+| Velocidad de la simulación (M7) | 1×, 5×, 10× o 20× la velocidad promedio, 10× por defecto; una posición por segundo | Una entrega de 20 min se ve en 2 min |
 | Franjas horarias (RN-11) | 4 franjas de 6 h, en hora de Bogotá (`America/Bogota`) | La franja no depende de la zona horaria del servidor |
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
 | Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
+| Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
+| Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
 | Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |

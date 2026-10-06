@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { bboxSchema, formatBbox } from './geo';
+import { bboxSchema, destinationPoint, formatBbox, haversineM } from './geo';
+
+describe('distancias', () => {
+  it('un milésimo de grado de latitud son unos 111 m', () => {
+    expect(haversineM([-74.1, 4.6], [-74.1, 4.601])).toBeCloseTo(111.2, 0);
+  });
+
+  it('destinationPoint deja el punto a la distancia y en el rumbo pedidos', () => {
+    const from = { lat: 4.6, lng: -74.1 };
+    const north = destinationPoint(from, 3000, 0);
+    const east = destinationPoint(from, 3000, Math.PI / 2);
+
+    expect(haversineM([from.lng, from.lat], [north.lng, north.lat])).toBeCloseTo(3000, 0);
+    expect(north.lat).toBeGreaterThan(from.lat);
+    expect(north.lng).toBeCloseTo(from.lng, 6);
+    expect(east.lng).toBeGreaterThan(from.lng);
+  });
+});
 
 describe('bboxSchema', () => {
   it('interpreta minLng,minLat,maxLng,maxLat', () => {

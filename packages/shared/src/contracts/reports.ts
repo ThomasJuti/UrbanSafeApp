@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { incidentTypeSchema } from '../catalog';
-import { latLngSchema } from '../geo';
+import { urbanPointSchema } from '../geo';
 import { mapIncidentSchema } from './incidents';
 
 export const nicknameSchema = z.string().trim().min(2).max(30);
@@ -11,7 +11,7 @@ export const createReportBodySchema = z.object({
   deviceId: z.uuid(),
   nickname: nicknameSchema,
   type: incidentTypeSchema,
-  point: latLngSchema,
+  point: urbanPointSchema,
 });
 export type CreateReportBody = z.infer<typeof createReportBodySchema>;
 

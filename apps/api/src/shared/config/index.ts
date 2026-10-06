@@ -7,6 +7,8 @@ const envSchema = z.object({
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   ROUTING_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
   ROUTING_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  ROUTING_MAX_QUEUE: z.coerce.number().int().nonnegative().default(30),
+  TRUST_PROXY: z.stringbool().default(false),
 });
 
 export type Config = {
@@ -15,9 +17,10 @@ export type Config = {
   dbPoolSize: number;
   dbStatementTimeoutMs: number;
   routing: RoutingConfig;
+  trustProxy: boolean;
 };
 
-export type RoutingConfig = { statementTimeoutMs: number; concurrency: number };
+export type RoutingConfig = { statementTimeoutMs: number; concurrency: number; maxQueue: number };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = envSchema.safeParse(env);
@@ -32,6 +35,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     routing: {
       statementTimeoutMs: parsed.data.ROUTING_STATEMENT_TIMEOUT_MS,
       concurrency: parsed.data.ROUTING_CONCURRENCY,
+      maxQueue: parsed.data.ROUTING_MAX_QUEUE,
     },
+    trustProxy: parsed.data.TRUST_PROXY,
   };
 }

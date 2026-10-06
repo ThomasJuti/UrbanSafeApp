@@ -7,4 +7,6 @@ export * from './risk';
 export * from './contracts/incidents';
 export * from './contracts/reports';
 export * from './contracts/routes';
+export * from './contracts/delivery';
+export * from './contracts/errors';
 export * from './contracts/base-risk';

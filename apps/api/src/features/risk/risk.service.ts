@@ -26,16 +26,31 @@ export function createRiskService(db: Db, log: Log = console) {
     return run;
   }
 
+  // Mientras corre un recálculo incremental no se programa otro: lo que llegue se junta en un solo
+  // lote para después. Así una ráfaga de votos nunca deja más de un recálculo en espera.
+  let incrementalRunning = false;
+
+  function schedule() {
+    if (incrementalRunning || batchTimer || pending.size === 0) return;
+    batchTimer = setTimeout(flush, BATCH_WINDOW_MS);
+  }
+
   function flush() {
     batchTimer = undefined;
     const ids = [...pending];
     pending.clear();
-    void enqueue(() => refreshEdgeRisk(db, ids)).catch(() => undefined);
+    incrementalRunning = true;
+    void enqueue(() => refreshEdgeRisk(db, ids))
+      .catch(() => undefined)
+      .finally(() => {
+        incrementalRunning = false;
+        schedule();
+      });
   }
 
   function incidentChanged(id: string) {
     pending.add(id);
-    batchTimer ??= setTimeout(flush, BATCH_WINDOW_MS);
+    schedule();
   }
 
   const refreshAll = () =>

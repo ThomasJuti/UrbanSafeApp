@@ -53,7 +53,9 @@ function report(overrides: Partial<CreateReportBody> & Pick<CreateReportBody, 'd
 function recordingBus() {
   const events: { name: DomainEventName; incidentId: string }[] = [];
   const bus: EventBus = {
-    publish: (name, payload) => events.push({ name, incidentId: payload.incident.id }),
+    publish: (name, payload) => {
+      if ('incident' in payload) events.push({ name, incidentId: payload.incident.id });
+    },
     subscribe: () => () => {},
   };
   return { bus, events };
