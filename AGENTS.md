@@ -73,7 +73,7 @@ docs/spec.md
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus, completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
-| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
+| `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Parcial: sesión en memoria con los dos tramos, ticker global, ruta simulada como `PositionSource`, resumen y sala privada por sesión. Falta la web |
 
 ## Reglas de arquitectura (feature-based)
 
@@ -109,7 +109,7 @@ Solo se crean los archivos que la feature necesita.
 
 - **RN-01:** toda fuente de hechos individuales (noticias, comunidad) se normaliza a `Incidente` antes de usarse. Los datos abiertos son la única excepción y se guardan como `RiesgoBaseZona`.
 - **RN-03, privacidad:**
-  - La posición y la ruta de un domiciliario solo se emiten a **su propia sala** de Socket.IO.
+  - La posición y la ruta de un domiciliario solo se emiten a **su propia sala** de Socket.IO (`delivery:<sesión>`). Un socket entra con `delivery.join` y el id de la sesión, que funciona como credencial.
   - Los incidentes van a una sala pública.
   - Nunca hacer broadcast de posiciones ni exponer rutas en endpoints públicos.
   - La web `/reportar` jamás recibe datos de domiciliarios.

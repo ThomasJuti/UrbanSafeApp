@@ -51,7 +51,19 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
     - **Sostenida.** 30 usuarios pidiendo cada 5 a 15 s durante 60 s, con trayectos de 2 a 8 km: p50 474 ms y p95 1 380 ms. **Cumple** el presupuesto de 1,5 s.
     - **Ráfaga.** Los 30 pedidos a la vez dan p95 3,5 s. El límite es la CPU de la base, no la cola del API: subir la concurrencia a 8 casi no cambia el resultado.
 
+- **Simulador de pedidos, parte 1 (M7 en el servidor; F1 pasos 1 a 4, 6 y 7; RN-03).**
+  - **Pedido.** `POST /api/delivery/sessions` crea una sesión con un pedido al azar: recogida y entrega ajustadas al vértice del grafo más cercano. Si un punto queda a más de 200 m de una calle, se descarta. El primer pedido también sortea dónde arranca el domiciliario; los siguientes salen de donde terminó.
+  - **Tramos.** Aceptar calcula las 3 rutas del tramo hacia la recogida. Al llegar se calculan las del tramo hacia la entrega, con el riesgo de la hora en que empieza cada tramo. El cliente elige por tipo de ruta; nunca manda geometría.
+  - **Movimiento.** Un único ticker a 1 Hz avanza todas las sesiones sobre la ruta elegida, a la velocidad promedio por el multiplicador.
+  - **Fuente de posición.** La posición sale de una interfaz `PositionSource`; hoy la implementa la ruta simulada.
+  - **Resumen.** Tiempo extra, exposición evitada e incidentes evitados frente a la ruta más rápida de cada tramo.
+  - **Privacidad (RN-03).** Estado y posición viajan solo a la sala privada de la sesión. Un socket entra a esa sala con `delivery.join` y el id de la sesión, que solo conoce la pestaña que la creó.
+  - **Concurrencia.** Los comandos de una sesión van en cola: aceptar dos veces calcula las rutas una sola vez y elegir la misma ruta dos veces es un reintento. Las sesiones viven en memoria y se descartan tras 2 h sin comandos.
+  - **Tiempos medidos.** Crear un pedido tarda unos 0,2 s y aceptarlo, entre 0,2 y 0,4 s, ya con la conexión caliente.
+
 ### Siguiente
+
+- **Simulador de pedidos, parte 2 (M7 en la web).** El flujo del pedido en `/domiciliario`, la prueba de carga con 30 sesiones y la medición del criterio "Valor de la ruta segura".
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
@@ -282,6 +294,8 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Casco urbano (M5) | Longitud −74,23 a −73,99 · Latitud 4,46 a 4,84 | Deja por fuera Sumapaz y la zona rural |
 | Recorte del grafo para rutear (M5) | Caja de origen y destino + 2 km por lado; si no hay ruta, + 6 km | La ruta casi nunca se sale de esa caja y el Dijkstra trabaja sobre mucho menos grafo |
 | Nivel de riesgo de ruta (M5) | Bajo < 0,2 ≤ medio < 0,5 ≤ alto | Clasificación que ve el domiciliario |
+| Pedido simulado (M7) | Recogida a 1–4 km del domiciliario y entrega a 2–6 km de la recogida, en línea recta | Trayectos típicos de domicilio en moto |
+| Velocidad de la simulación (M7) | 1×, 5×, 10× o 20× la velocidad promedio, 10× por defecto; una posición por segundo | Una entrega de 20 min se ve en 2 min |
 | Franjas horarias (RN-11) | 4 franjas de 6 h, en hora de Bogotá (`America/Bogota`) | La franja no depende de la zona horaria del servidor |
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
