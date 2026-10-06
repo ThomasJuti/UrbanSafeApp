@@ -1,11 +1,16 @@
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { createDeliveryService, snapToRoads } from '../features/delivery';
 import { createRiskService } from '../features/risk';
+import { createRoutingService } from '../features/routing';
 import type { Db } from '../shared/db';
 import { createEventBus } from '../shared/events';
 import { createRealtime } from '../shared/realtime';
-import { createApp, type RoutingDeps } from './create-app';
+import { createApp } from './create-app';
+
+// El ruteo usa su propio pool, con el statement_timeout del ruteo en la sesión.
+export type RoutingDeps = { db: Db; concurrency: number };
 
 export async function startServer(deps: {
   db: Db;
@@ -17,19 +22,31 @@ export async function startServer(deps: {
 }) {
   const bus = createEventBus();
   const stopRisk = deps.backgroundJobs ? createRiskService(deps.db).start(bus) : async () => {};
-  const app = createApp({ db: deps.db, bus, routing: deps.routing });
+  const routing = createRoutingService(deps.routing.db, deps.routing.concurrency);
+  const delivery = createDeliveryService({
+    planRoutes: routing.planRoutes,
+    snapToRoads: (points) => snapToRoads(deps.db, points),
+    bus,
+  });
+  const stopTicker = delivery.start();
+  const app = createApp({ db: deps.db, bus, routing, delivery });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
     const server = serve({ fetch: app.fetch, port: deps.port }, () => resolve(server as HttpServer));
   });
 
-  const realtime = createRealtime(httpServer);
+  const realtime = createRealtime(httpServer, { canJoinDelivery: delivery.has });
   bus.subscribe('incident.created', (payload) => realtime.toPublicIncidents('incident.created', payload));
   bus.subscribe('incident.updated', (payload) => realtime.toPublicIncidents('incident.updated', payload));
+  bus.subscribe('delivery.updated', (payload) =>
+    realtime.toDelivery(payload.state.sessionId, 'delivery.updated', payload),
+  );
+  bus.subscribe('delivery.position', (payload) => realtime.toDelivery(payload.sessionId, 'delivery.position', payload));
 
   return {
     port: (httpServer.address() as AddressInfo).port,
     close: async () => {
+      stopTicker();
       // io.close() también cierra el servidor HTTP.
       await realtime.close();
       await stopRisk();
