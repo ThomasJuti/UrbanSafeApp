@@ -36,6 +36,9 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
+| `pnpm load:routes [url]` | Prueba de carga del presupuesto de ruteo (30 usuarios) contra un API ya corriendo |
+
+`db:import-graph` y `db:import-base-risk` recalculan después el riesgo de todos los tramos y compactan `road_edges` con `VACUUM FULL`.
 
 ## Estructura
 
@@ -53,8 +56,7 @@ apps/
 packages/
   shared/src/       # tipos y esquemas compartidos: Incidente, catálogo, parámetros, contratos, eventos
 db/
-  migrations/       # SQL versionado
-  functions/        # funciones SQL de riesgo (RN-06, RN-07, RN-10, RN-11)
+  migrations/       # SQL versionado, incluidas las funciones SQL
   seeds/            # datos de prueba
 scripts/            # tareas sueltas; las importaciones viven en api/src/app
 docs/spec.md
@@ -68,8 +70,8 @@ docs/spec.md
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL y lectura para el mapa. Falta programar la revisión mensual |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite (RN-04), deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
-| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Pendiente |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Parcial: grafo de OSM importado y ruta más rápida con recorte del grafo y límite de concurrencia. Faltan las rutas balanceada y segura (RN-07) |
+| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus, completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
 | `delivery` | M7 (servidor): pedidos simulados, fuente de posición, resumen | Pendiente |
 
@@ -118,7 +120,7 @@ Solo se crean los archivos que la feature necesita.
 ## Base de datos
 
 - El cómputo geoespacial y de riesgo vive en PostGIS:
-  - RN-06, RN-07, RN-10 y RN-11 como funciones SQL en `db/functions`.
+  - RN-06, RN-07, RN-10 y RN-11 como funciones SQL, creadas en migraciones (`refresh_edge_risk`, `refresh_time_multipliers`, `route_between`).
   - El riesgo por tramo se **precalcula** en una columna y se actualiza con incidentes nuevos; pgRouting no calcula el riesgo dentro del Dijkstra.
 - Para ruteo, recortar el grafo a una caja alrededor de origen y destino.
 - Coordenadas en SRID 4326; distancias con `geography` o en una proyección métrica.
@@ -153,8 +155,8 @@ Supuesto del MVP: **una sola instancia del API**. Por eso el estado en memoria (
 Si una feature no cumple su presupuesto, no se da por terminada.
 
 ### Base de datos
-- **Un solo pool de conexiones**, de tamaño fijo y configurable (empezar en ~10–20). Ninguna feature abre conexiones propias.
-- **`statement_timeout`** en todas las consultas; las de ruteo con su propio límite explícito.
+- **Dos pools de conexiones, de tamaño fijo, creados en `app/`.** El general (`DB_POOL_SIZE`) y uno de ruteo con una conexión por cálculo simultáneo (`ROUTING_CONCURRENCY`). Ninguna feature abre conexiones propias. La suma tiene que caber en el límite de clientes del pooler de Supabase.
+- **`statement_timeout`** en todas las consultas. El pool de ruteo trae el suyo en la sesión: fijarlo por pedido costaba dos viajes más a la base, unos 280 ms desde Bogotá.
 - **Índices en todo filtro.** Índice GiST en geometrías e índice en `ocurrido_en`. Toda consulta espacial nueva se revisa con `EXPLAIN ANALYZE` antes de integrarse.
 - **Nada de N+1.** Se resuelve con una consulta o en lote; los inserts masivos (ingesta) van en lote.
 - **Transacciones cortas**, sin llamadas de red (LLM, geocodificador) dentro de ellas.
@@ -162,14 +164,16 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 
 ### Ruteo (M5)
 - El grafo se **recorta** a una caja alrededor de origen y destino, y el riesgo por tramo está **precalculado**.
-- Las 3 rutas se calculan **en paralelo** (`Promise.all` sobre el pool).
-- **Límite de concurrencia** para el ruteo (por ejemplo `p-limit`), para que 30 pedidos simultáneos no saturen la base. Las solicitudes que excedan el límite esperan en cola, no fallan.
-- **Caché corta** de resultados por (nodo origen, nodo destino, versión del riesgo). Se invalida cuando cambia el riesgo de la zona.
+- Las 3 rutas se calculan **en serie dentro de una sola consulta**. El Dijkstra es pura CPU de la base: en paralelo se estorban y tardaban 2,3 s en vez de 0,7 s.
+- **Límite de concurrencia** para el ruteo (`p-limit`), para que 30 pedidos simultáneos no saturen la base. Las solicitudes que excedan el límite esperan en cola, no fallan.
+- **Caché corta** de resultados por (nodo origen, nodo destino, versión del riesgo). Se invalida cuando cambia el riesgo de la zona. Pendiente.
+- Tras reescribir el riesgo de toda la ciudad, compactar `road_edges` (`VACUUM FULL`): la tabla duplica su tamaño y las rutas en frío se vuelven lentas.
 
 ### Modelo de riesgo (M4)
 - **Recálculo incremental:** solo los tramos cercanos al incidente nuevo, nunca toda la ciudad.
 - **Agrupar ráfagas.** Una corrida de ingesta que inserta muchos incidentes dispara un solo recálculo, con debounce o cola.
-- **Nunca dos recálculos a la vez sobre lo mismo.** Se garantiza con una cola de un solo consumidor o un advisory lock de Postgres.
+- **Nunca dos recálculos a la vez sobre lo mismo.** Se garantiza con una cola de un solo consumidor o un advisory lock de Postgres. `risk` usa los dos.
+- **Las pruebas no arrancan los trabajos de fondo** (`backgroundJobs: false`): recalcularían el riesgo de toda la ciudad en la base compartida.
 
 ### Alertas y simulación (M6, M7)
 - **Un único ticker global** avanza todas las sesiones de entrega. Prohibido un `setInterval` por usuario.

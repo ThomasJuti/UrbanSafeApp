@@ -27,8 +27,8 @@ afterAll(async () => {
 });
 
 describe('planRoutes sobre el grafo de Bogotá (M5)', () => {
-  it('devuelve la ruta más rápida, de punta a punta, con el tiempo a la velocidad promedio', async () => {
-    const service = createRoutingService(db, { statementTimeoutMs: 5000, concurrency: 2 });
+  it('la ruta más rápida va de punta a punta, con el tiempo a la velocidad promedio', async () => {
+    const service = createRoutingService(db, 2);
 
     const routes = await service.planRoutes({ from: chapinero, to: kennedy });
     const fastest = routes?.[0];
@@ -43,11 +43,23 @@ describe('planRoutes sobre el grafo de Bogotá (M5)', () => {
     expect(fastest!.durationS).toBeCloseTo(fastest!.lengthM / ((PARAMS.motorcycleSpeedKmh * 1000) / 3600));
   });
 
+  it('devuelve rápida, balanceada y segura; la segura nunca es más riesgosa ni la rápida más lenta (RN-07)', async () => {
+    const service = createRoutingService(db, 3);
+
+    const routes = (await service.planRoutes({ from: chapinero, to: kennedy }))!;
+    const [fastest, balanced, safest] = routes;
+
+    expect(routes.map((option) => option.kind)).toEqual(['fastest', 'balanced', 'safest']);
+    expect(fastest!.durationS).toBeLessThanOrEqual(balanced!.durationS);
+    expect(fastest!.durationS).toBeLessThanOrEqual(safest!.durationS);
+    expect(safest!.riskScore).toBeLessThanOrEqual(fastest!.riskScore);
+  });
+
   it('con más pedidos que el límite de concurrencia, los que sobran esperan y todos terminan', async () => {
-    const service = createRoutingService(db, { statementTimeoutMs: 10_000, concurrency: 2 });
+    const service = createRoutingService(db, 2);
 
-    const results = await Promise.all(Array.from({ length: 5 }, () => service.planRoutes({ from: chapinero, to: kennedy })));
+    const results = await Promise.all(Array.from({ length: 3 }, () => service.planRoutes({ from: chapinero, to: kennedy })));
 
-    expect(results.every((routes) => routes?.[0]?.kind === 'fastest')).toBe(true);
+    expect(results.every((routes) => routes?.length === 3)).toBe(true);
   });
 });

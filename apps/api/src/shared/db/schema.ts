@@ -67,6 +67,16 @@ export interface RoadEdgesTable {
   cost_s: number;
   reverse_cost_s: number;
   geom: ColumnType<never, unknown, unknown>;
+  locality_code: ColumnType<string | null, string | null | undefined, string | null>;
+  recent_risk: ColumnType<number, number | undefined, number>;
+  // riesgo(tramo, franja) para cada franja de RN-11.
+  risk: ColumnType<number[], number[] | undefined, number[]>;
+}
+
+export interface LocalityTimeMultipliersTable {
+  locality_code: string;
+  band: number;
+  multiplier: number;
 }
 
 export interface LocalityBaseRiskTable {
@@ -89,4 +99,5 @@ export interface Database {
   road_vertices: RoadVerticesTable;
   road_edges: RoadEdgesTable;
   locality_base_risk: LocalityBaseRiskTable;
+  locality_time_multipliers: LocalityTimeMultipliersTable;
 }

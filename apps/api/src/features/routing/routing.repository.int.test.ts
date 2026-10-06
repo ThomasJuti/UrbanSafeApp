@@ -2,7 +2,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
 import { withRollback } from '../../shared/db/testing';
-import { queryRoute } from './routing.repository';
+import { queryRoutes } from './routing.repository';
 
 // Grafo de juguete en el mar cerca de (5,5), lejos de Bogotá: el vértice más cercano a estos
 // puntos siempre es uno de prueba. Ids altos para no chocar con nodos de OSM.
@@ -75,12 +75,28 @@ async function insertGraph(trx: Db) {
 }
 
 const point = (id: number) => ({ lng: AT[id]![0], lat: AT[id]![1] });
+const BAND = 2;
+
+async function findPath(trx: Db, from: number | { lng: number; lat: number }, to: number, marginM: number, alpha = 0) {
+  const origin = typeof from === 'number' ? point(from) : from;
+  const [path] = await queryRoutes(trx, { from: origin, to: point(to), marginM, alphas: [alpha], band: BAND });
+  return path ?? null;
+}
+
+async function setRisk(trx: Db, source: number, target: number, risk: number) {
+  await trx
+    .updateTable('road_edges')
+    .set({ risk: [0, 0, risk, 0] })
+    .where('source', '=', String(source))
+    .where('target', '=', String(target))
+    .execute();
+}
 
 describe('route_between (M5)', () => {
   it('va directo por el sentido permitido', async () => {
     await withRollback(db, async (trx) => {
       await insertGraph(trx);
-      const route = await queryRoute(trx, point(V.a), point(V.b), 2000);
+      const route = await findPath(trx, V.a, V.b, 2000);
 
       expect(route?.lengthM).toBe(111);
       expect(route?.path).toEqual([AT[V.a], AT[V.b]]);
@@ -90,7 +106,7 @@ describe('route_between (M5)', () => {
   it('respeta la contravía y da la vuelta a la manzana, con la línea orientada en el sentido del recorrido', async () => {
     await withRollback(db, async (trx) => {
       await insertGraph(trx);
-      const route = await queryRoute(trx, point(V.b), point(V.a), 2000);
+      const route = await findPath(trx, V.b, V.a, 2000);
 
       expect(route?.lengthM).toBe(333);
       expect(route?.path).toEqual([AT[V.b], AT[V.c], AT[V.d], AT[V.a]]);
@@ -101,8 +117,8 @@ describe('route_between (M5)', () => {
     await withRollback(db, async (trx) => {
       await insertGraph(trx);
 
-      expect(await queryRoute(trx, point(V.a), point(V.far), 2000)).toBeNull();
-      expect((await queryRoute(trx, point(V.a), point(V.far), 30_000))?.lengthM).toBe(49500);
+      expect(await findPath(trx, V.a, V.far, 2000)).toBeNull();
+      expect((await findPath(trx, V.a, V.far, 30_000))?.lengthM).toBe(49500);
     });
   });
 
@@ -111,7 +127,87 @@ describe('route_between (M5)', () => {
       await insertGraph(trx);
       const nearA = { lng: 5.00005, lat: 4.99995 };
 
-      expect((await queryRoute(trx, nearA, point(V.b), 2000))?.path[0]).toEqual(AT[V.a]);
+      expect((await findPath(trx, nearA, V.b, 2000))?.path[0]).toEqual(AT[V.a]);
+    });
+  });
+});
+
+describe('route_between con riesgo (RN-07)', () => {
+  it('la segura rodea un tramo de riesgo máximo; la balanceada y la rápida no', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await setRisk(trx, V.a, V.b, 1);
+
+      // Directo cuesta 111 × (1 + α); la vuelta por d y c, 333.
+      expect((await findPath(trx, V.a, V.b, 2000, 0))?.lengthM).toBe(111);
+      expect((await findPath(trx, V.a, V.b, 2000, 1))?.lengthM).toBe(111);
+      expect((await findPath(trx, V.a, V.b, 2000, 5))?.path).toEqual([AT[V.a], AT[V.d], AT[V.c], AT[V.b]]);
+    });
+  });
+
+  it('calcula una ruta por α en una sola consulta, en el mismo orden', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await setRisk(trx, V.a, V.b, 1);
+
+      const paths = await queryRoutes(trx, { from: point(V.a), to: point(V.b), marginM: 2000, alphas: [5, 0], band: BAND });
+
+      expect(paths.map((path) => path?.lengthM)).toEqual([333, 111]);
+    });
+  });
+
+  it('usa el riesgo de la franja pedida', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await trx
+        .updateTable('road_edges')
+        .set({ risk: [1, 0, 0, 0] })
+        .where('source', '=', String(V.a))
+        .where('target', '=', String(V.b))
+        .execute();
+
+      expect((await findPath(trx, V.a, V.b, 2000, 5))?.lengthM).toBe(111);
+    });
+  });
+
+  it('el riesgo de la ruta es el promedio ponderado por longitud (M5)', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await setRisk(trx, V.b, V.c, 0.9);
+
+      const detour = await findPath(trx, V.b, V.a, 2000);
+
+      // b→c (0,9), c→d (0) y d→a (0), los tres de 111 m.
+      expect(detour?.riskScore).toBeCloseTo(0.3, 5);
+    });
+  });
+
+  it('cuenta los incidentes visibles a menos del radio de influencia de la ruta (M5, RN-12)', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      const incident = (lng: number, lat: number, confidence: number) =>
+        trx
+          .insertInto('incidents')
+          .values({
+            type: 'armed_robbery',
+            severity: 5,
+            location_kind: 'point',
+            geom: sql`ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)`,
+            occurred_at: new Date(),
+            time_known: true,
+            confidence,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+      const near = await incident(5.0005, 5.0001, 0.7);
+      const hidden = await incident(5.0005, 5.0001, 0.05);
+      const far = await incident(5.0005, 5.01, 0.7);
+
+      const ids = (await findPath(trx, V.a, V.b, 2000))?.nearbyIncidentIds ?? [];
+
+      expect(ids).toContain(near.id);
+      expect(ids).not.toContain(hidden.id);
+      expect(ids).not.toContain(far.id);
     });
   });
 });

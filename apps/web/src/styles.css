@@ -282,17 +282,64 @@ body,
   margin: 0;
 }
 
-.route-summary {
+.route-options {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 
-.route-summary strong {
-  font-size: 22px;
+.route-option {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 10px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.route-summary span {
+.route-option.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.route-option strong {
+  font-size: 20px;
+}
+
+.route-option-kind {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.route-option-meta {
   color: #4b5563;
+  font-size: 12px;
+}
+
+.risk-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.risk-badge.low {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.risk-badge.medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.risk-badge.high {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .sheet-actions {

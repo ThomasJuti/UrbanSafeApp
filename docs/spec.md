@@ -34,11 +34,27 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Lectura.** `GET /api/base-risk` devuelve las geometrías simplificadas (unos 50 KB) con una hora de caché.
   - **Mapa.** `/reportar` pinta cada localidad según su riesgo, debajo de las etiquetas, con una leyenda.
   - **Limitación.** En Chapinero, Santa Fe, Usaquén y las localidades del sur, el área incluye cerros y zona rural, así que su tasa queda más baja que la del casco urbano.
+- **Modelo de riesgo (M4; RN-06, RN-10, RN-11, RN-12).**
+  - **Precalculado.** `road_edges.risk` guarda `riesgo(tramo, franja)` para las 4 franjas; las funciones SQL `refresh_edge_risk` y `refresh_time_multipliers` lo calculan. Las franjas se cuentan en hora de Bogotá.
+  - **Horizonte.** El riesgo reciente usa los incidentes visibles de la misma ventana de 7 días del mapa.
+  - **Localidad del tramo.** Se asigna por su punto medio al importar el grafo o el riesgo base. Unos 19 500 tramos caen en municipios vecinos (Soacha, Mosquera, Chía…): no tienen localidad, así que su riesgo base es 0 y su multiplicador es 1.
+  - **Recálculo incremental.** Se recalcula al crearse o cambiar un incidente, por eventos del bus, agrupados en 300 ms y solo sobre los tramos a menos de R. Tarda unos 165 ms.
+  - **Recálculo completo.** Cada hora se recalcula todo para que el decaimiento avance (unos 4 s, escribiendo solo los tramos que cambian). Cada día se recalcula el multiplicador horario.
+  - **Concurrencia.** Los recálculos van en una cola en el proceso y con un advisory lock en la base.
+  - **Compactación.** Tras importar, `VACUUM FULL` de `road_edges`: reescribir el riesgo de toda la ciudad duplica la tabla y una ruta en frío pasaba de 3 s.
+- **Ruteo, parte 2 (M5: las 3 rutas; RN-07).**
+  - **Cálculo.** `POST /api/routes` devuelve rápida, balanceada y segura con α = 0, 1 y 5 sobre el riesgo de la franja actual. Las tres van en serie dentro de una sola consulta: en paralelo se estorban en la CPU de la base y tardaban 2,3 s en vez de 0,7 s.
+  - **Nivel e incidentes.** Cada opción trae su nivel de riesgo (promedio ponderado por longitud, que con velocidad fija equivale a ponderar por tiempo) y los incidentes visibles de los últimos 7 días a menos de R de la ruta.
+  - **Pool propio.** El ruteo usa su propio pool, con el `statement_timeout` puesto en la sesión, así que cada pedido hace un solo viaje a la base.
+  - **Vista.** `/domiciliario` muestra las 3 opciones como tarjetas con tiempo, tiempo extra frente a la más rápida, nivel de riesgo e incidentes cercanos. La elegida se pinta en azul y las demás en gris; también se elige tocando la línea.
+  - **Carga medida (`pnpm load:routes`, desde local contra São Paulo).**
+    - **Sostenida.** 30 usuarios pidiendo cada 5 a 15 s durante 60 s, con trayectos de 2 a 8 km: p50 474 ms y p95 1 380 ms. **Cumple** el presupuesto de 1,5 s.
+    - **Ráfaga.** Los 30 pedidos a la vez dan p95 3,5 s. El límite es la CPU de la base, no la cola del API: subir la concurrencia a 8 casi no cambia el resultado.
 
 ### Siguiente
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
-- **Riesgo por tramo y las 3 rutas (M4, M5, RN-07).** Riesgo precalculado por tramo, rutas balanceada y segura con su nivel de riesgo e incidentes cercanos, y la prueba de carga del presupuesto de 1,5 s.
+- **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
 
 ## 1. Visión
 
@@ -266,6 +282,7 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Casco urbano (M5) | Longitud −74,23 a −73,99 · Latitud 4,46 a 4,84 | Deja por fuera Sumapaz y la zona rural |
 | Recorte del grafo para rutear (M5) | Caja de origen y destino + 2 km por lado; si no hay ruta, + 6 km | La ruta casi nunca se sale de esa caja y el Dijkstra trabaja sobre mucho menos grafo |
 | Nivel de riesgo de ruta (M5) | Bajo < 0,2 ≤ medio < 0,5 ≤ alto | Clasificación que ve el domiciliario |
+| Franjas horarias (RN-11) | 4 franjas de 6 h, en hora de Bogotá (`America/Bogota`) | La franja no depende de la zona horaria del servidor |
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
 | Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
