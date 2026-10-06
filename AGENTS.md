@@ -37,6 +37,8 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
 | `pnpm load:routes [url]` | Prueba de carga del presupuesto de ruteo (30 usuarios) contra un API ya corriendo |
+| `pnpm load:delivery [url]` | 30 sesiones de entrega a la vez: ráfaga al aceptar y recorrido hasta entregar |
+| `pnpm measure:safe-route [url]` | Mide el criterio "Valor de la ruta segura" con 30 pedidos simulados |
 
 `db:import-graph` y `db:import-base-risk` recalculan después el riesgo de todos los tramos y compactan `road_edges` con `VACUUM FULL`.
 
@@ -73,7 +75,7 @@ docs/spec.md
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse) y límite por IP; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
-| `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor y web de `/domiciliario` (pedido, 3 rutas por tramo, avance, resumen). Faltan la prueba de carga con 30 sesiones y la medición de "Valor de la ruta segura" |
+| `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor, web y pruebas: 30 sesiones entregan a la vez (la ráfaga al aceptar no cumple 1,5 s) y el criterio "Valor de la ruta segura" está medido y hoy no se cumple |
 
 ## Reglas de arquitectura (feature-based)
 

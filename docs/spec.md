@@ -67,6 +67,10 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Velocidad.** 1×, 5×, 10× o 20×, 10× por defecto.
   - **Privacidad (RN-03).** El id vive en `sessionStorage` de la pestaña. El socket entra a la sala privada con `delivery.join`; al recargar se vuelve a unir.
   - **Mapa.** Sigue mostrando los incidentes de la ciudad. No hay planner manual: el pedido lo sortea el servidor.
+- **Simulador de pedidos, parte 3 (M7: carga y criterio).**
+  - **Carga (`pnpm load:delivery`).** 30 sesiones a la vez. Crearlas no falla (p95 2,3 s: las 30 ajustan puntos al grafo juntas). Aceptarlas juntas no falla y las 30 entregan a 20×; ninguna se queda sin ruta. El p95 al aceptar es 4,8 s: **no cumple** el presupuesto de 1,5 s, igual que la ráfaga de `pnpm load:routes`, porque la CPU de la base no da para 30 Dijkstra a la vez.
+  - **Límite por IP.** Crear sesión cabe 60 veces cada 10 minutos. `measure:safe-route` y `load:delivery` gastan 30 cada uno: juntos llenan la ventana.
+  - **Valor de la ruta segura (`pnpm measure:safe-route`).** 30 pedidos con las dos rutas calculadas. **No cumple:** ninguno baja la exposición al menos 50 % con no más de 25 % de tiempo extra. La media es 3 % menos exposición y 1 % de tiempo extra, porque la más segura sale igual a la más rápida: el riesgo de los tramos es bajo y parecido, y α = 5 no cambia el camino.
 - **Endurecimiento del API (M3, M4, M5, M7).**
   - **Límite por IP.** Reportes, votos, `POST /api/routes` y los pedidos simulados (crear, aceptar, siguiente) tienen un límite por IP en ventana fija, además del límite por dispositivo de RN-04. Al pasarse responden 429 con `Retry-After`. La IP sale del socket; `X-Forwarded-For` solo se usa con `TRUST_PROXY=true`, y entonces se toma la última entrada, la que puso el proxy propio.
   - **Holgura.** Los límites son amplios porque en la demo unos 30 usuarios pueden compartir la IP de una misma red. `pnpm load:routes` hace unos 190 pedidos desde una sola IP: correrlo dos veces en 10 minutos topa el límite, salvo que se reinicie el API.
@@ -78,7 +82,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### Siguiente
 
-- **Simulador de pedidos, parte 3 (M7).** Prueba de carga con 30 sesiones y la medición del criterio "Valor de la ruta segura".
+- **Valor de la ruta segura.** La primera medición no llega al 70 %. Falta decidir si se ajusta α o el modelo de riesgo para que la ruta más segura se aparte de la más rápida.
 
 - **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
 - **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
