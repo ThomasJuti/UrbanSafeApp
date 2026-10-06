@@ -69,6 +69,17 @@ export interface RoadEdgesTable {
   geom: ColumnType<never, unknown, unknown>;
 }
 
+export interface LocalityBaseRiskTable {
+  code: string;
+  name: string;
+  crime_count: number;
+  area_km2: number;
+  base_risk: number;
+  period: string;
+  geom: ColumnType<never, unknown, unknown>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database {
   incidents: IncidentsTable;
   incident_sources: IncidentSourcesTable;
@@ -77,4 +88,5 @@ export interface Database {
   incident_votes: IncidentVotesTable;
   road_vertices: RoadVerticesTable;
   road_edges: RoadEdgesTable;
+  locality_base_risk: LocalityBaseRiskTable;
 }
