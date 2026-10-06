@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { createIncidentsRoutes } from '../features/incidents';
+import { createBaseRiskRoutes } from '../features/open-data';
 import { createReportsRoutes } from '../features/reports';
 import { createRoutingRoutes, createRoutingService } from '../features/routing';
 import type { RoutingConfig } from '../shared/config';
@@ -11,6 +12,7 @@ export function createApp(deps: { db: Db; bus: EventBus; routing: RoutingConfig 
 
   app.get('/api/health', (c) => c.json({ ok: true }));
   app.route('/api/incidents', createIncidentsRoutes(deps.db));
+  app.route('/api/base-risk', createBaseRiskRoutes(deps.db));
   app.route('/api/reports', createReportsRoutes(deps));
   app.route('/api/routes', createRoutingRoutes(createRoutingService(deps.db, deps.routing)));
 

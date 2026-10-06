@@ -15,7 +15,8 @@
     "db:migrate": "dbmate --migrations-dir db/migrations --no-dump-schema up",
     "db:new": "dbmate --migrations-dir db/migrations new",
     "db:seed": "pnpm --filter @urbansafe/api db:seed",
-    "db:import-graph": "pnpm --filter @urbansafe/api db:import-graph"
+    "db:import-graph": "pnpm --filter @urbansafe/api db:import-graph",
+    "db:import-base-risk": "pnpm --filter @urbansafe/api db:import-base-risk"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
