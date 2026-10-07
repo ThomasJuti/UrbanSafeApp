@@ -14,7 +14,9 @@
     "db:import-base-risk": "tsx --env-file-if-exists=../../.env src/app/import-base-risk.ts",
     "load:routes": "tsx src/app/load-test-routes.ts",
     "load:delivery": "tsx src/app/load-test-delivery.ts",
+    "load:demo": "tsx src/app/load-test-demo.ts",
     "measure:safe-route": "tsx src/app/measure-safe-route.ts",
+    "measure:alphas": "tsx --env-file-if-exists=../../.env src/app/measure-safe-alphas.ts",
     "ingest:news": "tsx --env-file-if-exists=../../.env src/app/ingest-news.ts",
     "ingest:sample": "tsx --env-file-if-exists=../../.env src/app/ingest-news.ts --sample"
   },

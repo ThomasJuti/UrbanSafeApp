@@ -73,11 +73,11 @@ docs/spec.md
 |---|---|---|
 | `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes y noticias: `find_matching_incident` lo usan `submit_community_report` y `submit_news_incident`, bajo el mismo advisory lock |
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Hecho: feeds RSS cada 45 min (solo con `backgroundJobs` y las dos claves), duplicado exacto antes del LLM (`news_articles`), una lectura por historia y descarte de seguimientos sin el delito en el título, consultas de Google con `intitle:`, extractor Gemini y geocodificador Google detrás de sus interfaces, caché de geocodificación, fusión en SQL y eventos al bus. Una vía larga se guarda como corredor de OSM; una localidad no se fusiona con otra noticia de la misma localidad. Falta la revisión manual de §7 |
-| `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL y lectura para el mapa. Falta programar la revisión mensual |
+| `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL, lectura para el mapa y revisión cada 30 días con los trabajos de fondo |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite por dispositivo (RN-04) y por IP, solo dentro del casco urbano, deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse) y límite por IP; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
-| `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
+| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse), caché corta por par de vértices (se invalida al recalcular el riesgo) y límite por IP; cumple el presupuesto en carga sostenida |
+| `alerts` | M6, RN-08: alertas sobre la ruta activa | Hecho: al elegir ruta se cargan los candidatos una vez; cada posición mira solo esa lista. Un incidente nuevo se compara con las rutas en camino. El aviso va a la sala privada y recalcular es un comando del domiciliario |
 | `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor, web y pruebas: 30 sesiones entregan a la vez (la ráfaga al aceptar no cumple 1,5 s) y el criterio "Valor de la ruta segura" está medido y hoy no se cumple |
 
 ## Reglas de arquitectura (feature-based)
@@ -171,7 +171,7 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 - El grafo se **recorta** a una caja alrededor de origen y destino, y el riesgo por tramo está **precalculado**.
 - Las 3 rutas se calculan **en serie dentro de una sola consulta**. El Dijkstra es pura CPU de la base: en paralelo se estorban y tardaban 2,3 s en vez de 0,7 s.
 - **Límite de concurrencia** para el ruteo (`p-limit`), para que 30 pedidos simultáneos no saturen la base. Las solicitudes que excedan el límite esperan en cola, hasta `ROUTING_MAX_QUEUE` en espera. Más allá, `RoutingBusyError` y 503 con `Retry-After`: quien llama decide si reintenta (`delivery` reintenta solo el segundo tramo).
-- **Caché corta** de resultados por (nodo origen, nodo destino, versión del riesgo). Se invalida cuando cambia el riesgo de la zona. Pendiente.
+- **Caché corta** de resultados por (nodo origen, nodo destino, franja, versión del riesgo). Se invalida cuando `risk` termina un recálculo.
 - Tras reescribir el riesgo de toda la ciudad, compactar `road_edges` (`VACUUM FULL`): la tabla duplica su tamaño y las rutas en frío se vuelven lentas.
 
 ### Modelo de riesgo (M4)

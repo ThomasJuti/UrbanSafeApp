@@ -86,6 +86,7 @@ export interface LocalityBaseRiskTable {
   area_km2: number;
   base_risk: number;
   period: string;
+  imported_at: ColumnType<Date, Date | string | undefined, Date | string>;
   geom: ColumnType<never, unknown, unknown>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

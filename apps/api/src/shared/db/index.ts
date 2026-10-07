@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CompiledQuery, Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import type { Database } from './schema';
@@ -11,14 +14,16 @@ export type DbOptions = {
   statementTimeoutMs: number;
 };
 
+// CA pública de Supabase. pg interpreta sslmode=require como verificación estricta y, sin esta CA, falla.
+const SUPABASE_CA = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../../db/supabase-ca.crt'));
+
 export function poolConfigFromUrl(url: string): pg.PoolConfig {
   const parsed = new URL(url);
   const sslmode = parsed.searchParams.get('sslmode');
   parsed.searchParams.delete('sslmode');
+  parsed.searchParams.delete('sslrootcert');
 
-  // pg toma sslmode=require como verify-full y revienta con la CA de Supabase.
-  // Ciframos sin verificar el certificado, igual que hace dbmate.
-  const ssl = sslmode && sslmode !== 'disable' ? { rejectUnauthorized: false } : undefined;
+  const ssl = sslmode && sslmode !== 'disable' ? { ca: SUPABASE_CA, rejectUnauthorized: true } : undefined;
   return { connectionString: parsed.toString(), ...(ssl ? { ssl } : {}) };
 }
 

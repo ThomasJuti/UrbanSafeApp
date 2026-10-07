@@ -1,6 +1,7 @@
-import { ROUTE_KINDS, type DomainEventName, type DomainEvents, type RouteOption, type RouteRequest } from '@urbansafe/shared';
+import { ROUTE_KINDS, type DomainEventName, type DomainEvents, type MapIncident, type RouteOption, type RouteRequest } from '@urbansafe/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { EventBus } from '../../shared/events';
+import { createEventBus } from '../../shared/events';
 import { RoutingBusyError } from '../routing';
 import { createDeliveryService, LEG_RETRY_MS, type PlanRoutes } from './delivery.service';
 
@@ -26,9 +27,13 @@ function fakeRoutes({ from, to }: RouteRequest): RouteOption[] {
 function setup(planRoutes: PlanRoutes = async (request) => fakeRoutes(request), options: { maxSessions?: number } = {}) {
   let clock = 1_000_000;
   const events: { name: DomainEventName; payload: DomainEvents[DomainEventName] }[] = [];
+  const inner = createEventBus();
   const bus: EventBus = {
-    publish: (name, payload) => events.push({ name, payload }),
-    subscribe: () => () => {},
+    publish: (name, payload) => {
+      events.push({ name, payload });
+      inner.publish(name, payload);
+    },
+    subscribe: (name, handler) => inner.subscribe(name, handler),
   };
   const plan = vi.fn(planRoutes);
   const service = createDeliveryService({
@@ -44,7 +49,7 @@ function setup(planRoutes: PlanRoutes = async (request) => fakeRoutes(request), 
     clock += ms;
     service.tick();
   };
-  return { service, plan, events, advance, now: () => clock };
+  return { service, plan, events, advance, now: () => clock, bus };
 }
 
 async function createdId(service: ReturnType<typeof setup>['service']) {
@@ -276,5 +281,52 @@ describe('sesión de entrega (M7, F1)', () => {
 
     expect(service.has(id)).toBe(false);
     expect(await service.accept(id)).toEqual({ ok: false, error: 'not_found' });
+  });
+
+  it('no recalcula solo: hace falta un aviso y que el domiciliario lo pida', async () => {
+    const { service, plan, bus, advance } = setup();
+    const id = await createdId(service);
+    await service.accept(id);
+    await service.chooseRoute(id, 'safest');
+    const callsAfterChoose = plan.mock.calls.length;
+
+    expect(await service.recalculate(id)).toEqual({ ok: false, error: 'invalid_state' });
+    expect(plan.mock.calls.length).toBe(callsAfterChoose);
+    expect(service.get(id)).toMatchObject({ ok: true, state: { status: 'riding' } });
+
+    const incident: MapIncident = {
+      id: '7f6b1c1e-8a4e-4c55-9d2a-2f7e0c3b1a20',
+      type: 'armed_robbery',
+      severity: 5,
+      location: { kind: 'point', point: { lng: -74.1, lat: 4.6 } },
+      occurredAt: '2026-10-06T17:00:00.000Z',
+      timeKnown: true,
+      confidence: 0.7,
+    };
+    bus.publish('alert.raised', { sessionId: id, incident });
+    await settle();
+    const warned = service.get(id);
+    expect(warned.ok && warned.state).toMatchObject({ status: 'riding', alert: { incidentId: incident.id } });
+
+    advance(5_000);
+    const riding = service.get(id);
+    const progress = riding.ok ? riding.state.progressM : 0;
+    const safest = riding.ok ? riding.state.options.find((option) => option.kind === 'safest') : undefined;
+    const fraction = safest && safest.lengthM > 0 ? Math.min(1, progress / safest.lengthM) : 0;
+    const riddenDuration = (safest?.durationS ?? 0) * fraction;
+
+    const recalculated = await service.recalculate(id);
+    expect(recalculated.ok && recalculated.state.status).toBe('choosing');
+    expect(plan.mock.calls.length).toBe(callsAfterChoose + 1);
+
+    await service.chooseRoute(id, 'fastest');
+    advance(LONG_TICK_MS);
+    await settle();
+    await service.chooseRoute(id, 'fastest');
+    advance(LONG_TICK_MS);
+    const delivered = service.get(id);
+    const fastestDuration = 144;
+    expect(delivered.ok && delivered.state.summary?.durationS).toBeCloseTo(riddenDuration + fastestDuration * 2, 5);
+    expect(delivered.ok && delivered.state.summary?.extraTimeS).toBeCloseTo(riddenDuration, 5);
   });
 });

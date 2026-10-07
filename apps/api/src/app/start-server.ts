@@ -1,8 +1,10 @@
 import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { createAlertService } from '../features/alerts';
 import { createDeliveryService, snapToRoads } from '../features/delivery';
 import { createNewsIngestionFromConfig } from '../features/news-ingestion';
+import { startBaseRiskReview } from '../features/open-data';
 import { createRiskService } from '../features/risk';
 import { createRoutingService } from '../features/routing';
 import type { NewsIngestionConfig } from '../shared/config';
@@ -29,6 +31,7 @@ export async function startServer(deps: {
 }) {
   const bus = createEventBus();
   const stopRisk = deps.backgroundJobs ? createRiskService(deps.db).start(bus) : async () => {};
+  const stopBaseRisk = deps.backgroundJobs ? startBaseRiskReview(deps.db) : async () => {};
   const news =
     deps.backgroundJobs && deps.newsIngestion
       ? createNewsIngestionFromConfig({ db: deps.db, bus, config: deps.newsIngestion })
@@ -40,6 +43,7 @@ export async function startServer(deps: {
     bus,
   });
   const stopTicker = delivery.start();
+  const stopAlerts = createAlertService(deps.db).start(bus);
   const app = createApp({ db: deps.db, bus, routing, delivery, clientKey: clientIp(deps.trustProxy) });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
@@ -53,6 +57,8 @@ export async function startServer(deps: {
     realtime.toDelivery(payload.state.sessionId, 'delivery.updated', payload),
   );
   bus.subscribe('delivery.position', (payload) => realtime.toDelivery(payload.sessionId, 'delivery.position', payload));
+  bus.subscribe('alert.raised', (payload) => realtime.toDelivery(payload.sessionId, 'alert.raised', payload));
+  bus.subscribe('risk.refreshed', () => routing.invalidateCache());
   // Después de suscribir el tiempo real: los incidentes de la primera corrida también llegan a los mapas.
   const stopNews = news ? news.start() : async () => {};
 
@@ -60,9 +66,11 @@ export async function startServer(deps: {
     port: (httpServer.address() as AddressInfo).port,
     close: async () => {
       stopTicker();
+      stopAlerts();
       // io.close() también cierra el servidor HTTP.
       await realtime.close();
       await stopNews();
+      await stopBaseRisk();
       await stopRisk();
     },
   };

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   PARAMS,
+  riskLevelOf,
+  type DeliveryAlert,
   type DeliveryLeg,
   type DeliveryState,
   type DeliveryStatus,
@@ -37,6 +39,25 @@ export type DeliveryDeps = {
   maxSessions?: number;
 };
 
+type Ridden = { durationS: number; lengthM: number; exposure: number; nearbyIncidentIds: string[] };
+
+const emptyRidden = (): Ridden => ({ durationS: 0, lengthM: 0, exposure: 0, nearbyIncidentIds: [] });
+
+// Lo andado antes de un recálculo se suma a la ruta nueva. La rápida de referencia es la del inicio del tramo.
+function combineRoute(ridden: Ridden, chosen: RouteOption): RouteOption {
+  const durationS = ridden.durationS + chosen.durationS;
+  const exposure = ridden.exposure + chosen.durationS * chosen.riskScore;
+  const riskScore = durationS > 0 ? Math.min(1, exposure / durationS) : chosen.riskScore;
+  return {
+    ...chosen,
+    lengthM: ridden.lengthM + chosen.lengthM,
+    durationS,
+    riskScore,
+    riskLevel: riskLevelOf(riskScore),
+    nearbyIncidentIds: [...new Set([...ridden.nearbyIncidentIds, ...chosen.nearbyIncidentIds])],
+  };
+}
+
 type Session = {
   id: string;
   version: number;
@@ -51,6 +72,8 @@ type Session = {
   completedLegs: CompletedLeg[];
   summary: DeliverySummary | null;
   ride: { source: SimulatedRoute; lastTickMs: number } | null;
+  alert: DeliveryAlert | null;
+  baseline: { leg: DeliveryLeg; fastest: RouteOption; ridden: Ridden } | null;
   // Cola de comandos de la sesión: un doble clic o un comando durante el cálculo de rutas espera
   // al anterior en vez de cruzarse con él.
   queue: Promise<unknown>;
@@ -69,6 +92,12 @@ export function createDeliveryService(deps: DeliveryDeps) {
   const maxSessions = deps.maxSessions ?? MAX_SESSIONS;
   const sessions = new Map<string, Session>();
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+  const unsubscribeAlert = deps.bus.subscribe('alert.raised', ({ sessionId, incident }) => {
+    const session = sessions.get(sessionId);
+    if (!session || session.status !== 'riding') return;
+    session.alert = { incidentId: incident.id, type: incident.type, point: incident.location.point };
+    publish(session);
+  });
 
   function toState(session: Session): DeliveryState {
     return {
@@ -83,6 +112,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
       progressM: session.progressM,
       speedMultiplier: session.speedMultiplier,
       summary: session.summary,
+      alert: session.status === 'riding' ? session.alert : null,
     };
   }
 
@@ -118,12 +148,21 @@ export function createDeliveryService(deps: DeliveryDeps) {
       completedLegs: [],
       summary: null,
       ride: null,
+      alert: null,
+      baseline: null,
     } satisfies Partial<Session>);
   }
 
   // Corre dentro de la cola de la sesión. Con 'busy' la sesión queda en routing y decide quien llama.
   async function routeLeg(session: Session): Promise<'done' | 'busy'> {
-    Object.assign(session, { status: 'routing', options: [], chosen: null, progressM: 0, ride: null } satisfies Partial<Session>);
+    Object.assign(session, {
+      status: 'routing',
+      options: [],
+      chosen: null,
+      progressM: 0,
+      ride: null,
+      alert: null,
+    } satisfies Partial<Session>);
     publish(session);
 
     const to = session.leg === 'to_pickup' ? session.order.pickup : session.order.dropoff;
@@ -168,8 +207,13 @@ export function createDeliveryService(deps: DeliveryDeps) {
 
   function arrive(session: Session) {
     const chosen = session.options.find((option) => option.kind === session.chosen)!;
-    const fastest = session.options.find((option) => option.kind === 'fastest')!;
-    session.completedLegs.push({ fastest, chosen });
+    const baseline = session.baseline?.leg === session.leg ? session.baseline : null;
+    session.completedLegs.push({
+      fastest: baseline?.fastest ?? session.options.find((option) => option.kind === 'fastest')!,
+      chosen: combineRoute(baseline?.ridden ?? emptyRidden(), chosen),
+    });
+    session.baseline = null;
+    session.alert = null;
     session.ride = null;
 
     if (session.leg === 'to_pickup') {
@@ -229,6 +273,8 @@ export function createDeliveryService(deps: DeliveryDeps) {
         completedLegs: [],
         summary: null,
         ride: null,
+        alert: null,
+        baseline: null,
         queue: Promise.resolve(),
         lastActivityMs: now(),
       };
@@ -259,6 +305,11 @@ export function createDeliveryService(deps: DeliveryDeps) {
         if (session.status === 'riding' && session.chosen === kind) return ok(session);
         const option = session.options.find((candidate) => candidate.kind === kind);
         if (session.status !== 'choosing' || !option) return fail('invalid_state');
+        const fastest = session.options.find((candidate) => candidate.kind === 'fastest');
+        if (!fastest) return fail('invalid_state');
+        if (!session.baseline || session.baseline.leg !== session.leg) {
+          session.baseline = { leg: session.leg, fastest, ridden: emptyRidden() };
+        }
 
         session.status = 'riding';
         session.chosen = kind;
@@ -277,6 +328,23 @@ export function createDeliveryService(deps: DeliveryDeps) {
 
     // Pedido nuevo desde donde está el domiciliario: tras entregar, tras fallar o para rechazar el
     // que le ofrecieron.
+    // RN-08: solo si el domiciliario lo pide, y solo con un aviso activo. Lo ya recorrido se conserva.
+    recalculate: (id: string) =>
+      command(id, async (session) => {
+        const chosen = session.options.find((option) => option.kind === session.chosen);
+        if (session.status !== 'riding' || !session.alert || !session.baseline || !chosen || chosen.lengthM <= 0) {
+          return fail('invalid_state');
+        }
+        const fraction = Math.min(1, session.progressM / chosen.lengthM);
+        const ridden = session.baseline.ridden;
+        ridden.durationS += chosen.durationS * fraction;
+        ridden.lengthM += chosen.lengthM * fraction;
+        ridden.exposure += chosen.durationS * fraction * chosen.riskScore;
+        ridden.nearbyIncidentIds.push(...chosen.nearbyIncidentIds);
+        if ((await routeLeg(session)) === 'busy') routeSecondLeg(session);
+        return ok(session);
+      }),
+
     nextOrder: (id: string) =>
       command(id, async (session) => {
         if (!['offered', 'delivered', 'failed'].includes(session.status)) return fail('invalid_state');
@@ -293,6 +361,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
       const timer = setInterval(tick, PARAMS.delivery.positionTickMs);
       return () => {
         clearInterval(timer);
+        unsubscribeAlert();
         for (const retry of retryTimers) clearTimeout(retry);
         retryTimers.clear();
       };
