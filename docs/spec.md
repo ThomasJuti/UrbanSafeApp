@@ -79,8 +79,23 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Límite de sesiones.** Con 500 sesiones en memoria, crear otra descarta la más inactiva que no esté en camino; si todas están en camino, responde 503.
   - **Recálculo de riesgo sin acumulación.** A lo sumo corre un lote incremental y espera otro: lo que llega durante la corrida se suma al lote que espera.
   - **SQL de `route_between`.** La función arma su consulta con literales escapados (`%L`) en vez de interpolar texto (`%s`).
+- **Ingesta de noticias (M1, F3; RN-01, RN-09, RN-11).**
+  - **Fuentes.** Las 8 consultas de Google News (con `when:1d`) y los 4 feeds directos del spec, cada 45 min y una vez al arrancar, solo con `backgroundJobs`. Los ítems del RSS se validan con zod; se ignora lo publicado hace más de 7 días.
+  - **Filtro previo.** Los feeds directos traen todas las secciones (deportes, farándula…). Solo pasan al LLM los que mencionan algún término de delito; Google News ya viene filtrado por la consulta.
+  - **Duplicado exacto antes del LLM (RN-09).** `news_articles` guarda cada artículo visto, con llaves únicas por URL original, por enlace de Google y por título normalizado más medio (el dominio). Lo ya visto no vuelve al LLM. Lo que falló se reintenta hasta 3 corridas.
+  - **Enlaces de Google News.** Se intenta decodificar el id sin red. Hoy todos los enlaces usan el formato nuevo cifrado y ninguno se decodifica (0 de 112 el 2026-10-06), así que la deduplicación exacta de Google News usa título y medio.
+  - **Extracción.** Un extractor detrás de una interfaz, hoy Gemini 3.5 Flash-Lite con `@google/genai` (`LLM_PROVIDER`, `LLM_MODEL`), con salida estructurada validada con zod. Devuelve relevancia, si fue en Bogotá, tipo del catálogo, texto de ubicación, fecha y hora. Sin hora, `hora_conocida` es falsa y se usa el mediodía de esa fecha, sin pasar de la publicación (RN-11). Las llamadas se espacian para no pasar de la cuota por minuto: el plan gratuito de Gemini da 15 y, sin espaciarlas, la primera corrida real perdió 62 de 141 artículos por 429.
+  - **Geocodificación.** Google Geocoding detrás de su interfaz, restringida a Bogotá y al casco urbano. Calles, cruces y sitios son puntos; barrios, áreas con la caja de Google; localidades, la geometría de `locality_base_risk`. Se descarta lo que es solo "Bogotá", queda fuera del casco urbano o es una vía larga. Caché de 30 días por texto normalizado, también de los no encontrados.
+  - **Confianza.** 0,7, por 0,5 si es un barrio y por 0,25 si es una localidad.
+  - **Mismo hecho (RN-09).** La función SQL `submit_news_incident` toma el mismo advisory lock que los reportes y usa `find_matching_incident`. Al fusionar suma la fuente, sube 0,1 hasta 1 y conserva el tipo más grave. Un barrio que llega absorbe los puntos que caen adentro. Una localidad no absorbe ni es absorbida por contención: solo se junta con otra noticia de la misma localidad. La misma noticia dos veces no suma.
+  - **Eventos.** Cada incidente creado o fusionado emite `incident.created` o `incident.updated`: `risk` recalcula y los mapas lo reciben.
+  - **Concurrencia.** Una sola corrida a la vez (bandera en el proceso y advisory lock de sesión), 4 artículos en paralelo hacia el LLM y el geocodificador, con timeouts y reintentos con backoff.
+  - **A mano.** `pnpm ingest:news` hace una corrida y muestra el resumen; con `--dry-run` solo lee los feeds. `pnpm ingest:sample` exporta los últimos 50 artículos procesados para la revisión de §7.
+  - **Sin claves.** Si falta `GEMINI_API_KEY` o `GOOGLE_GEOCODING_API_KEY`, el servidor avisa una vez y arranca sin ingesta.
 
 ### Siguiente
+
+- **Ingesta de noticias con claves reales (M1).** Falta correrla con `GEMINI_API_KEY` y `GOOGLE_GEOCODING_API_KEY` y revisar a mano los 50 artículos de `pnpm ingest:sample` contra los criterios de calidad de la extracción y deduplicación (§7). Primera lectura de los feeds (2026-10-06, `--dry-run`): 358 ítems; 144 candidatos únicos tras quitar 183 sin términos de delito y los repetidos entre consultas.
 
 - **Valor de la ruta segura.** La primera medición no llega al 70 %. Falta decidir si se ajusta α o el modelo de riesgo para que la ruta más segura se aparte de la más rápida.
 
@@ -129,7 +144,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   | `homicidio OR sicariato Bogotá` | Homicidio / sicariato |
   | `domiciliario robo OR atraco Bogotá` | Hechos contra domiciliarios |
 
-  Usar el operador `when:1d` para limitar a noticias del último día, previa verificación de que el RSS lo respeta.
+  Se usa el operador `when:1d` para limitar a noticias del último día. Verificado el 2026-10-06: el RSS lo respeta (43 artículos de las últimas 24 h frente a 102 de hasta 5 días sin el operador).
 
 - Extraer de cada artículo: tipo de delito, texto de ubicación, fecha/hora y relevancia (LLM con salida estructurada), a partir del título y el resumen disponibles en el feed. Si el artículo no indica la hora del hecho, se registra solo la fecha (ver RN-11).
 - Geocodificar el texto de ubicación a coordenadas. Si solo se identifica el barrio o la localidad, registrar el incidente como área del nivel correspondiente, con confianza reducida (ver Parámetros iniciales).
@@ -323,6 +338,7 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
 | Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
+| Ingesta de noticias (M1) | Cada 45 min · artículos de hasta 7 días · caché de geocodificación de 30 días · 3 intentos por artículo · máximo 15 llamadas al LLM por minuto (`LLM_MAX_REQUESTS_PER_MINUTE`) | Dentro de los 30–60 min de M1; lo más viejo no se vería en el mapa |
 | Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
 | Reputación (RN-04) | +0,02 de confianza inicial por punto de saldo · Máximo 0,5 | Unas 10 confirmaciones netas llevan a un reportero al máximo |
@@ -397,7 +413,7 @@ TypeScript en frontend y backend, para compartir tipos (como `Incidente`) entre 
 | Tiempo real | WebSockets (Socket.IO) | Difusión inmediata de reportes y alertas a todos los mapas conectados |
 | Frontend | React + Vite + TypeScript; una app con dos rutas: `/domiciliario` (M7) y `/reportar` (M8) | Ambas vistas son aplicaciones interactivas centradas en el mapa |
 | Mapa | MapLibre GL JS | Open source, mapas vectoriales, sin costos de licencia |
-| Extracción de noticias | LLM con salida estructurada, detrás de un adaptador intercambiable (proveedor por definir) | Extracción de tipo, ubicación y hora a JSON sin NLP propio; el adaptador permite cambiar de proveedor sin afectar el resto del sistema |
+| Extracción de noticias | Gemini (Gemini API, `gemini-3.5-flash-lite`) con salida estructurada, detrás de un adaptador intercambiable | Extracción de tipo, ubicación y hora a JSON sin NLP propio; el adaptador permite cambiar de proveedor sin afectar el resto del sistema |
 | Geocodificación | Google Geocoding API | Mejor manejo de direcciones colombianas que Nominatim |
 | Tareas programadas | node-cron dentro del backend | Suficiente para la frecuencia de ingesta del MVP |
 | Entorno de desarrollo | API y web en local contra un proyecto de Supabase en la nube compartido por el equipo; sin Docker | Prioriza la velocidad de desarrollo del MVP sobre el aislamiento entre entornos |
