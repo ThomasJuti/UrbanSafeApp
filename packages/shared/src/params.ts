@@ -2,6 +2,7 @@
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const MAP_WINDOW_MS = 7 * DAY_MS;
 
 export const PARAMS = {
   decayTauMs: 3 * DAY_MS,
@@ -50,6 +51,16 @@ export const PARAMS = {
   confidenceAdjustments: { confirm: 0.15, deny: -0.2, merge: 0.1, max: 1 },
   reputation: { stepPerBalance: 0.02, maxInitialConfidence: 0.5 },
   visibilityThreshold: 0.1,
-  mapWindowMs: 7 * DAY_MS,
+  mapWindowMs: MAP_WINDOW_MS,
   dedup: { maxDistanceM: 500, maxTimeGapMs: 24 * HOUR_MS },
+  newsIngestion: {
+    // M1 pide consultar cada 30–60 minutos.
+    intervalMs: 45 * 60 * 1000,
+    // Lo publicado hace más que la ventana del mapa ya no se vería (M8), así que no se procesa.
+    maxArticleAgeMs: MAP_WINDOW_MS,
+    // Google permite guardar resultados de geocodificación de forma temporal, hasta 30 días.
+    geocodeCacheTtlMs: 30 * DAY_MS,
+    // Un artículo que falló (LLM o geocodificador caídos) se reintenta en las corridas siguientes.
+    maxAttempts: 3,
+  },
 } as const;
