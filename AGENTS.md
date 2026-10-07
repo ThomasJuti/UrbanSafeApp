@@ -37,6 +37,11 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
 | `pnpm load:routes [url]` | Prueba de carga del presupuesto de ruteo (30 usuarios) contra un API ya corriendo |
+| `pnpm load:delivery [url]` | 30 sesiones de entrega a la vez: ráfaga al aceptar y recorrido hasta entregar |
+| `pnpm measure:safe-route [url]` | Mide el criterio "Valor de la ruta segura" con 30 pedidos simulados |
+| `pnpm ingest:news` | Una corrida de la ingesta de noticias (M1) y su resumen; necesita `GEMINI_API_KEY` y `GOOGLE_GEOCODING_API_KEY` |
+| `pnpm ingest:news --dry-run` | Solo descarga y lee los feeds: cuenta ítems por feed, sin LLM, geocodificador ni base |
+| `pnpm ingest:sample [n] [--out archivo]` | Exporta en Markdown los últimos n (50) artículos procesados para la revisión manual de §7 |
 
 `db:import-graph` y `db:import-base-risk` recalculan después el riesgo de todos los tramos y compactan `road_edges` con `VACUUM FULL`.
 
@@ -66,14 +71,14 @@ docs/spec.md
 
 | Feature | Cubre | Estado |
 |---|---|---|
-| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes de la comunidad; falta la fusión con noticias |
-| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Pendiente |
+| `incidents` | Modelo único (RN-01), deduplicación y fusión (RN-09) | Hecho el modelo, la persistencia y la lectura por caja con visibilidad (RN-12). RN-09 hecho para reportes y noticias: `find_matching_incident` lo usan `submit_community_report` y `submit_news_incident`, bajo el mismo advisory lock |
+| `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Hecho: feeds RSS cada 45 min (solo con `backgroundJobs` y las dos claves), duplicado exacto antes del LLM (`news_articles`), una lectura por historia y descarte de seguimientos sin el delito en el título, consultas de Google con `intitle:`, extractor Gemini y geocodificador Google detrás de sus interfaces, caché de geocodificación, fusión en SQL y eventos al bus. Una vía larga se guarda como corredor de OSM; una localidad no se fusiona con otra noticia de la misma localidad. Falta la revisión manual de §7 |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL y lectura para el mapa. Falta programar la revisión mensual |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite por dispositivo (RN-04) y por IP, solo dentro del casco urbano, deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
 | `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
 | `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse) y límite por IP; cumple el presupuesto en carga sostenida. Falta la caché de rutas |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Pendiente |
-| `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor y web de `/domiciliario` (pedido, 3 rutas por tramo, avance, resumen). Faltan la prueba de carga con 30 sesiones y la medición de "Valor de la ruta segura" |
+| `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor, web y pruebas: 30 sesiones entregan a la vez (la ráfaga al aceptar no cumple 1,5 s) y el criterio "Valor de la ruta segura" está medido y hoy no se cumple |
 
 ## Reglas de arquitectura (feature-based)
 

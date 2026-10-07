@@ -13,7 +13,7 @@ export const incidentSourceSchema = z.object({
 });
 export type IncidentSource = z.infer<typeof incidentSourceSchema>;
 
-export const AREA_LEVELS = ['neighborhood', 'locality'] as const;
+export const AREA_LEVELS = ['neighborhood', 'locality', 'street'] as const;
 export const areaLevelSchema = z.enum(AREA_LEVELS);
 export type AreaLevel = z.infer<typeof areaLevelSchema>;
 

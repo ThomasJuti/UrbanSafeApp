@@ -3,7 +3,7 @@ import type { ColumnType, Generated } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
-export type LocationKind = 'point' | 'neighborhood' | 'locality';
+export type LocationKind = 'point' | 'neighborhood' | 'locality' | 'street';
 
 export interface IncidentsTable {
   id: Generated<string>;
@@ -90,6 +90,42 @@ export interface LocalityBaseRiskTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+export type NewsArticleStatus = 'pending' | 'incident' | 'discarded' | 'failed';
+export type NewsOutcome = 'created' | 'merged' | 'duplicate';
+export type GeocodeKind = LocationKind | 'none';
+
+export interface NewsArticlesTable {
+  id: Generated<string>;
+  url: string | null;
+  google_link: string | null;
+  normalized_title: string;
+  media_key: string;
+  media_name: string;
+  title: string;
+  summary: string;
+  feed: string;
+  published_at: Timestamp;
+  status: ColumnType<NewsArticleStatus, NewsArticleStatus | undefined, NewsArticleStatus>;
+  discard_reason: string | null;
+  outcome: NewsOutcome | null;
+  incident_id: string | null;
+  attempts: ColumnType<number, number | undefined, number>;
+  last_error: string | null;
+  extracted_type: string | null;
+  location_text: string | null;
+  geocode_kind: GeocodeKind | null;
+  occurred_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  time_known: boolean | null;
+  first_seen_at: ColumnType<Date, Date | string | undefined, never>;
+  processed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+}
+
+export interface GeocodeCacheTable {
+  query_key: string;
+  result: ColumnType<unknown, string | null, string | null>;
+  cached_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database {
   incidents: IncidentsTable;
   incident_sources: IncidentSourcesTable;
@@ -100,4 +136,6 @@ export interface Database {
   road_edges: RoadEdgesTable;
   locality_base_risk: LocalityBaseRiskTable;
   locality_time_multipliers: LocalityTimeMultipliersTable;
+  news_articles: NewsArticlesTable;
+  geocode_cache: GeocodeCacheTable;
 }

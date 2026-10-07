@@ -2,8 +2,10 @@ import type { Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import { createDeliveryService, snapToRoads } from '../features/delivery';
+import { createNewsIngestionFromConfig } from '../features/news-ingestion';
 import { createRiskService } from '../features/risk';
 import { createRoutingService } from '../features/routing';
+import type { NewsIngestionConfig } from '../shared/config';
 import type { Db } from '../shared/db';
 import { createEventBus } from '../shared/events';
 import { clientIp } from '../shared/http';
@@ -22,9 +24,15 @@ export async function startServer(deps: {
   backgroundJobs: boolean;
   // Detrás de un proxy propio que agrega X-Forwarded-For (ver clientIp).
   trustProxy: boolean;
+  // M1: corre con los trabajos de fondo y solo si están las claves del LLM y del geocodificador.
+  newsIngestion?: NewsIngestionConfig;
 }) {
   const bus = createEventBus();
   const stopRisk = deps.backgroundJobs ? createRiskService(deps.db).start(bus) : async () => {};
+  const news =
+    deps.backgroundJobs && deps.newsIngestion
+      ? createNewsIngestionFromConfig({ db: deps.db, bus, config: deps.newsIngestion })
+      : null;
   const routing = createRoutingService(deps.routing.db, deps.routing);
   const delivery = createDeliveryService({
     planRoutes: routing.planRoutes,
@@ -45,6 +53,8 @@ export async function startServer(deps: {
     realtime.toDelivery(payload.state.sessionId, 'delivery.updated', payload),
   );
   bus.subscribe('delivery.position', (payload) => realtime.toDelivery(payload.sessionId, 'delivery.position', payload));
+  // Después de suscribir el tiempo real: los incidentes de la primera corrida también llegan a los mapas.
+  const stopNews = news ? news.start() : async () => {};
 
   return {
     port: (httpServer.address() as AddressInfo).port,
@@ -52,6 +62,7 @@ export async function startServer(deps: {
       stopTicker();
       // io.close() también cierra el servidor HTTP.
       await realtime.close();
+      await stopNews();
       await stopRisk();
     },
   };
