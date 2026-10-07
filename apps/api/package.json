@@ -14,12 +14,16 @@
     "db:import-base-risk": "tsx --env-file-if-exists=../../.env src/app/import-base-risk.ts",
     "load:routes": "tsx src/app/load-test-routes.ts",
     "load:delivery": "tsx src/app/load-test-delivery.ts",
-    "measure:safe-route": "tsx src/app/measure-safe-route.ts"
+    "measure:safe-route": "tsx src/app/measure-safe-route.ts",
+    "ingest:news": "tsx --env-file-if-exists=../../.env src/app/ingest-news.ts",
+    "ingest:sample": "tsx --env-file-if-exists=../../.env src/app/ingest-news.ts --sample"
   },
   "dependencies": {
+    "@google/genai": "^2.27.0",
     "@hono/node-server": "^2.1.3",
     "@hono/zod-validator": "^0.9.1",
     "@urbansafe/shared": "workspace:*",
+    "fast-xml-parser": "^5.11.2",
     "hono": "^4.13.13",
     "kysely": "^0.29.6",
     "p-limit": "^7.3.3",
