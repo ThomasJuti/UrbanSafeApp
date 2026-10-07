@@ -3,7 +3,7 @@ import type { ColumnType, Generated } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
-export type LocationKind = 'point' | 'neighborhood' | 'locality';
+export type LocationKind = 'point' | 'neighborhood' | 'locality' | 'street';
 
 export interface IncidentsTable {
   id: Generated<string>;

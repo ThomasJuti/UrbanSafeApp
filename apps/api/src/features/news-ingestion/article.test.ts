@@ -1,6 +1,7 @@
 import { PARAMS } from '@urbansafe/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  clusterSameStory,
   decodeGoogleNewsLink,
   dedupeCandidates,
   htmlToText,
@@ -10,7 +11,7 @@ import {
   toCandidate,
   type ArticleCandidate,
 } from './article';
-import type { FeedSource } from './news-sources';
+import { googleNewsSearchUrl, NEWS_SOURCES, type FeedSource } from './news-sources';
 import type { RssItem } from './rss';
 
 const NOW = new Date('2026-10-06T20:00:00Z');
@@ -122,6 +123,16 @@ describe('toCandidate', () => {
     expect(toCandidate({ ...sports, source: { name: 'Semana', url: 'https://www.semana.com' } }, GOOGLE, NOW).kind).toBe('candidate');
   });
 
+  it('un seguimiento sin el delito en el título no se lee; si el título también dice el delito, sí', () => {
+    const hearing = item({ title: 'Condenan a alias Satanás por extorsión', source: { name: 'El Tiempo', url: 'https://www.eltiempo.com' } });
+    expect(toCandidate(hearing, GOOGLE, NOW)).toEqual({ kind: 'skipped', reason: 'followup' });
+    const caught = item({
+      title: 'Capturan a los que robaron un reloj en Chapinero',
+      source: { name: 'El Tiempo', url: 'https://www.eltiempo.com' },
+    });
+    expect(toCandidate(caught, GOOGLE, NOW).kind).toBe('candidate');
+  });
+
   it('descarta lo publicado antes de la ventana del mapa', () => {
     const old = new Date(NOW.getTime() - PARAMS.newsIngestion.maxArticleAgeMs - 1000).toUTCString();
     expect(toCandidate(item({ pubDate: old }), DIRECT, NOW)).toEqual({ kind: 'skipped', reason: 'stale' });
@@ -155,5 +166,53 @@ describe('dedupeCandidates', () => {
   it('el mismo título en otro medio no es duplicado exacto', () => {
     const otherMedia = { ...base, googleLink: 'https://news.google.com/rss/articles/c', mediaKey: 'infobae.com' };
     expect(dedupeCandidates([base, otherMedia])).toHaveLength(2);
+  });
+});
+
+function story(title: string, mediaKey: string): ArticleCandidate {
+  return {
+    url: null,
+    googleLink: `https://news.google.com/rss/articles/${mediaKey}`,
+    normalizedTitle: title.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase(),
+    mediaKey,
+    mediaName: mediaKey,
+    title,
+    summary: '',
+    feed: 'google:hurto Bogotá',
+    publishedAt: NOW,
+  };
+}
+
+describe('clusterSameStory', () => {
+  it('veinte medios con el mismo nombre propio son una sola lectura', () => {
+    const copies = ['eltiempo.com', 'semana.com', 'pulzo.com'].map((media) =>
+      story(`Medicina Legal explica la muerte de Yenifer García tras un tatuaje ${media}`, media),
+    );
+    const other = story('Hurto de un celular en Suba deja un capturado', 'caracol.com');
+    const { keep, sameStory } = clusterSameStory([...copies, other]);
+    expect(keep.map((candidate) => candidate.mediaKey).sort()).toEqual(['caracol.com', copies[0]?.mediaKey].sort());
+    expect(sameStory).toHaveLength(2);
+  });
+
+  it('dos hurtos distintos no se juntan por decir hurto', () => {
+    const { keep, sameStory } = clusterSameStory([
+      story('Hurto a una adulta mayor en Engativá', 'a.com'),
+      story('Hurto de una moto en Bosa', 'b.com'),
+    ]);
+    expect(keep).toHaveLength(2);
+    expect(sameStory).toHaveLength(0);
+  });
+});
+
+describe('consultas de Google News', () => {
+  it('piden la palabra del delito en el título y el último día', () => {
+    const queries = NEWS_SOURCES.filter((source) => source.kind === 'google-news').map((source) => source.url);
+    expect(queries).toHaveLength(8);
+    for (const url of queries) {
+      const q = new URL(url).searchParams.get('q') ?? '';
+      expect(q).toContain('intitle:');
+      expect(q).toContain('when:1d');
+    }
+    expect(googleNewsSearchUrl('intitle:hurto Bogotá')).toContain('intitle%3Ahurto');
   });
 });

@@ -5,7 +5,7 @@ import type { Db } from '../../shared/db';
 import type { GeocodeKind } from '../../shared/db/schema';
 import type { EventBus } from '../../shared/events';
 import { getMapIncident } from '../incidents';
-import { dedupeCandidates, normalizeText, toCandidate, type ArticleCandidate } from './article';
+import { clusterSameStory, dedupeCandidates, normalizeText, toCandidate, type ArticleCandidate } from './article';
 import { createGeminiExtractor } from './extractor/gemini-extractor';
 import { throttleExtractor } from './extractor/throttle';
 import type { Extraction, NewsExtractor } from './extractor/extractor';
@@ -14,6 +14,7 @@ import type { Geocoder, GeocodeResult } from './geocoder/geocoder';
 import { createGoogleGeocoder } from './geocoder/google-geocoder';
 import {
   claimArticles,
+  recordDiscardedCandidates,
   createGeocodeCache,
   listLocalities,
   markDiscarded,
@@ -41,15 +42,18 @@ export type DiscardReason =
   | 'no_location'
   | 'too_old'
   | 'not_geocoded'
-  | 'locality_unmatched';
+  | 'locality_unmatched'
+  | 'street_unmatched';
 
 export type FeedReport = { id: string; items: number; invalid: number; error: string | null };
 
 export type CollectedFeeds = {
   feeds: FeedReport[];
   candidates: ArticleCandidate[];
+  sameStory: ArticleCandidate[];
   stale: number;
   prefiltered: number;
+  followups: number;
   invalid: number;
 };
 
@@ -58,6 +62,8 @@ export type IngestionSummary = {
   fetched: number;
   stale: number;
   prefiltered: number;
+  followups: number;
+  sameStory: number;
   invalid: number;
   duplicates: number;
   processed: number;
@@ -71,7 +77,7 @@ export type IngestionSummary = {
 // Descarga y normaliza todos los feeds. Un feed caído no frena a los demás.
 export async function collectCandidates(sources: FeedSource[], fetchText: FetchText, now: Date): Promise<CollectedFeeds> {
   const limit = pLimit(FEED_CONCURRENCY);
-  const result: CollectedFeeds = { feeds: [], candidates: [], stale: 0, prefiltered: 0, invalid: 0 };
+  const result: CollectedFeeds = { feeds: [], candidates: [], sameStory: [], stale: 0, prefiltered: 0, followups: 0, invalid: 0 };
 
   const parsed = await Promise.all(
     sources.map((source) =>
@@ -92,10 +98,14 @@ export async function collectCandidates(sources: FeedSource[], fetchText: FetchT
     for (const item of feed.items) {
       const candidate = toCandidate(item, source, now);
       if (candidate.kind === 'candidate') result.candidates.push(candidate.candidate);
+      else if (candidate.reason === 'followup') result.followups += 1;
       else result[candidate.reason] += 1;
     }
   }
-  result.candidates = dedupeCandidates(result.candidates);
+  const unique = dedupeCandidates(result.candidates);
+  const clustered = clusterSameStory(unique);
+  result.candidates = clustered.keep;
+  result.sameStory = clustered.sameStory;
   return result;
 }
 
@@ -124,13 +134,19 @@ export function matchLocality(name: string, localities: Locality[]): Locality | 
 
 export type Located = { location: NewsIncidentLocation; kind: GeocodeKind } | { discard: DiscardReason };
 
-// Ubicación del incidente según lo que encontró el geocodificador (M1: punto, barrio o localidad).
+// Ubicación del incidente según lo que encontró el geocodificador (M1: punto, barrio, localidad o vía).
 // Un "barrio" que se llama igual que una localidad se toma como localidad: es la lectura prudente,
 // porque una localidad pesa menos y nunca absorbe a otros incidentes (RN-09).
 export function locate(geocoded: GeocodeResult, localities: Locality[]): Located {
   if (!geocoded) return { discard: 'not_geocoded' };
   if (geocoded.kind === 'point') {
     return { kind: 'point', location: { kind: 'point', lng: geocoded.point.lng, lat: geocoded.point.lat } };
+  }
+  if (geocoded.kind === 'street') {
+    return {
+      kind: 'street',
+      location: { kind: 'street', name: geocoded.name, lng: geocoded.point.lng, lat: geocoded.point.lat },
+    };
   }
   const locality = matchLocality(geocoded.name, localities);
   if (locality) return { kind: 'locality', location: { kind: 'locality', code: locality.code, name: locality.name } };
@@ -196,6 +212,7 @@ export function createNewsIngestion(deps: NewsIngestionDeps) {
   const log = deps.log ?? console;
 
   async function processArticle(article: ClaimedArticle, localities: Locality[]): Promise<ArticleOutcome> {
+    let storedOutcome: 'created' | 'merged' | 'duplicate' | null = null;
     try {
       const extraction = await extractor.extract({
         title: article.title,
@@ -235,7 +252,13 @@ export function createNewsIngestion(deps: NewsIngestionDeps) {
         timeKnown: extraction.timeKnown,
         confidence: newsConfidence(located.location.kind),
       });
-      if (stored.outcome === 'locality_unmatched') return { kind: 'discarded', reason: 'locality_unmatched' };
+      if (stored.outcome === 'locality_unmatched' || stored.outcome === 'street_unmatched' || !stored.incidentId) {
+        return {
+          kind: 'discarded',
+          reason: stored.outcome === 'street_unmatched' ? 'street_unmatched' : 'locality_unmatched',
+        };
+      }
+      storedOutcome = stored.outcome;
 
       // F3.5: `risk` recalcula los tramos cercanos y los mapas reciben el cambio, igual que con reportes.
       if (stored.outcome !== 'duplicate') {
@@ -244,6 +267,12 @@ export function createNewsIngestion(deps: NewsIngestionDeps) {
       }
       return { kind: stored.outcome };
     } catch (error) {
+      // Si el incidente ya se guardó, marcarlo fallido haría que el reintento vea la fuente y no
+      // vuelva a publicar el evento: el mapa no se entera hasta el próximo recálculo completo.
+      if (storedOutcome) {
+        log.warn(`La noticia ${article.id} quedó guardada pero no se publicó (${article.title})`, error);
+        return { kind: storedOutcome };
+      }
       log.warn(`No se pudo procesar la noticia ${article.id} (${article.title})`, error);
       await markFailed(db, article.id, error).catch((markError: unknown) => log.error('Falló marcar la noticia', markError));
       return { kind: 'failed' };
@@ -252,12 +281,15 @@ export function createNewsIngestion(deps: NewsIngestionDeps) {
 
   async function ingest(): Promise<IngestionSummary> {
     const collected = await collectCandidates(sources, fetchText, now());
+    await recordDiscardedCandidates(db, collected.sameStory, 'same_story');
     const claimed = await claimArticles(db, collected.candidates);
     const summary: IngestionSummary = {
       feeds: collected.feeds,
       fetched: collected.feeds.reduce((total, feed) => total + feed.items, 0),
       stale: collected.stale,
       prefiltered: collected.prefiltered,
+      followups: collected.followups,
+      sameStory: collected.sameStory.length,
       invalid: collected.invalid,
       duplicates: collected.candidates.length - claimed.length,
       processed: claimed.length,
@@ -328,6 +360,8 @@ export function formatSummary(summary: IngestionSummary): string {
     `${summary.fetched} leídos`,
     `${summary.stale} viejos`,
     `${summary.prefiltered} sin términos de delito`,
+    `${summary.followups} seguimientos`,
+    `${summary.sameStory} misma historia`,
     `${summary.duplicates} duplicados`,
     `${summary.processed} procesados`,
     `${summary.created} creados`,

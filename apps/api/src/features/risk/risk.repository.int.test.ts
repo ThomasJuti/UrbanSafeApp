@@ -201,13 +201,8 @@ describe('refresh_time_multipliers (RN-11)', () => {
 
 describe('recálculos simultáneos', () => {
   it('se encolan con el advisory lock en vez de bloquearse entre sí', async () => {
-    const recent = await db
-      .selectFrom('incidents')
-      .select('id')
-      .orderBy('reported_at', 'desc')
-      .limit(5)
-      .execute();
-    const ids = recent.map((row) => row.id);
+    // Un id que no existe: la prueba mide la cola del lock, no un recálculo de localidades reales.
+    const ids = ['00000000-0000-4000-8000-000000000099'];
 
     const results = await Promise.all([refreshEdgeRisk(db, ids), refreshEdgeRisk(db, ids), refreshEdgeRisk(db, ids)]);
 

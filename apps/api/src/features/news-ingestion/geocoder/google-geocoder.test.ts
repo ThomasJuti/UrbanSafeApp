@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCachedGeocoder, type GeocodeCache } from './cached-geocoder';
 import type { Geocoder, GeocodeResult } from './geocoder';
-import { classifyGeocodeResponse, createGoogleGeocoder, type GoogleGeocodeResponse } from './google-geocoder';
+import { classifyGeocodeResponse, createGoogleGeocoder, numberedStreetQuery, type GoogleGeocodeResponse } from './google-geocoder';
 
 const BOGOTA = [
   { long_name: 'Bogotá', types: ['locality', 'political'] },
@@ -70,9 +70,19 @@ describe('classifyGeocodeResponse', () => {
     expect(classifyGeocodeResponse(ok(soacha))).toBeNull();
   });
 
-  it('una vía larga no es un punto; una cuadra sí', () => {
-    expect(classifyGeocodeResponse(ok(result(['route'], 'Avenida Boyacá', 4.65, -74.11, 0.1)))).toBeNull();
+  it('una vía larga es la vía, no un punto en la mitad; una cuadra sí es un punto', () => {
+    expect(classifyGeocodeResponse(ok(result(['route'], 'Avenida Boyacá', 4.65, -74.11, 0.1)))).toEqual({
+      kind: 'street',
+      name: 'Avenida Boyacá',
+      point: { lat: 4.65, lng: -74.11 },
+    });
     expect(classifyGeocodeResponse(ok(result(['route'], 'Calle 23 Sur', 4.58, -74.1, 0.001)))).toMatchObject({ kind: 'point' });
+  });
+
+  it('una ciclorruta numerada se vuelve a preguntar como calle', () => {
+    expect(numberedStreetQuery('Ciclorruta de la 26, Bogotá')).toBe('Calle 26');
+    expect(numberedStreetQuery('Carrera 7 con calle 100')).toBe('Carrera 7');
+    expect(numberedStreetQuery('Bogotá')).toBeNull();
   });
 
   it('sin resultados no hay ubicación', () => {
@@ -109,6 +119,18 @@ describe('createGoogleGeocoder', () => {
 
     expect(geocoded).toMatchObject({ kind: 'point' });
     expect(urls).toHaveLength(3);
+  });
+
+  it('si Google responde solo la ciudad, reintenta con la vía numerada del texto', async () => {
+    const city = ok(result(['locality', 'political'], 'Bogotá', 4.71, -74.07, 0.2));
+    const avenue = ok(result(['route'], 'Avenida Calle 26', 4.65, -74.1, 0.1));
+    const { doFetch, urls } = fakeFetch([city, avenue]);
+
+    const geocoded = await createGoogleGeocoder({ apiKey: 'k', fetch: doFetch, retryBaseMs: 1 }).geocode('Ciclorruta de la 26');
+
+    expect(geocoded).toMatchObject({ kind: 'street', name: 'Avenida Calle 26' });
+    expect(urls).toHaveLength(2);
+    expect(new URL(urls[1] ?? '').searchParams.get('address')).toBe('Calle 26');
   });
 
   it('no reintenta una clave rechazada', async () => {

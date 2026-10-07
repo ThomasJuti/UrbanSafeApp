@@ -45,6 +45,8 @@ async function dryRun() {
       `${collected.candidates.length} candidatos únicos`,
       `${collected.stale} viejos`,
       `${collected.prefiltered} sin términos de delito`,
+      `${collected.followups} seguimientos`,
+      `${collected.sameStory.length} misma historia`,
       `${collected.invalid} inválidos`,
       `enlaces de Google decodificados: ${decoded.length}/${fromGoogle.length}`,
     ].join(' · '),

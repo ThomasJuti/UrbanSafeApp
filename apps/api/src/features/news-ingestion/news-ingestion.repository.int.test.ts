@@ -272,9 +272,59 @@ describe('submit_news_incident (RN-09)', () => {
       expect(row).toMatchObject({ location_kind: 'locality', location_name: name });
       expect(row.confidence).toBeCloseTo(news * 0.25);
 
-      // Otra noticia de la misma localidad y tipo compatible sí es el mismo hecho.
+      // RN-09: otra noticia de la misma localidad no es el mismo hecho. La localidad es demasiado grande.
       const sameLocality = await submit(trx, { location: locality, type: 'assault', confidence: news * 0.25 });
-      expect(sameLocality).toMatchObject({ outcome: 'merged', incidentId: localityNews.incidentId });
+      expect(sameLocality.outcome).toBe('created');
+      expect(sameLocality.incidentId).not.toBe(localityNews.incidentId);
+    });
+  });
+
+  it('una vía se arma con los tramos de OSM y dos notas de la misma vía se fusionan', async () => {
+    await withRollback(db, async (trx) => {
+      const onAvenue = await sql<{ lng: number; lat: number }>`
+        select ST_X(ST_LineInterpolatePoint(geom, 0.5)) as lng, ST_Y(ST_LineInterpolatePoint(geom, 0.5)) as lat
+        from road_edges where name = 'Avenida Calle 26' limit 1
+      `.execute(trx);
+      const point = onAvenue.rows[0];
+      if (!point) throw new Error('El grafo no tiene Avenida Calle 26');
+
+      const first = await submit(trx, {
+        location: { kind: 'street', name: 'Calle 26', lng: point.lng, lat: point.lat },
+        confidence: news * PARAMS.areaConfidenceFactor.street,
+      });
+      expect(first.outcome).toBe('created');
+      const row = await incident(trx, first.incidentId ?? '');
+      expect(row).toMatchObject({ location_kind: 'street', location_name: 'Avenida Calle 26' });
+      const bounds = await sql<{ xmin: number }>`select ST_XMin(geom) as xmin from incidents where id = ${row.id}`.execute(trx);
+      // La Calle 26 del occidente (lng ~ -74,2) no entra en la avenida.
+      expect(bounds.rows[0]?.xmin).toBeGreaterThan(-74.18);
+
+      const again = await submit(trx, {
+        location: { kind: 'street', name: 'Avenida Calle 26', lng: point.lng, lat: point.lat },
+        type: 'personal_theft',
+        confidence: news * PARAMS.areaConfidenceFactor.street,
+      });
+      expect(again).toMatchObject({ outcome: 'merged', incidentId: first.incidentId });
+
+      const nearbyPoint = await submit(trx, { location: pointAt({ lng: point.lng, lat: point.lat }) });
+      expect(nearbyPoint.outcome).toBe('created');
+      expect(nearbyPoint.incidentId).not.toBe(first.incidentId);
+
+      const renamed = await submit(trx, {
+        location: { kind: 'street', name: 'Avenida El Dorado', lng: point.lng, lat: point.lat },
+        type: 'fight',
+      });
+      expect(renamed.outcome).toBe('created');
+      expect(await incident(trx, renamed.incidentId ?? '')).toMatchObject({ location_name: 'Avenida Calle 26' });
+    });
+  }, 40_000);
+
+  it('una vía que no está en el grafo descarta el artículo', async () => {
+    await withRollback(db, async (trx) => {
+      const stored = await submit(trx, { location: { kind: 'street', name: 'Calle inexistente de prueba', lng: BASE.lng, lat: BASE.lat } });
+      expect(stored).toMatchObject({ outcome: 'street_unmatched', incidentId: null });
+      const article = await trx.selectFrom('news_articles').selectAll().where('id', '=', stored.article.id).executeTakeFirstOrThrow();
+      expect(article).toMatchObject({ status: 'discarded', discard_reason: 'street_unmatched' });
     });
   });
 

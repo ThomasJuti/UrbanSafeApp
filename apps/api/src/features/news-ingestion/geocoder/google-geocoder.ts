@@ -8,8 +8,9 @@ const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const REQUEST_TIMEOUT_MS = 10_000;
 const RETRIES = 3;
 const RETRY_BASE_MS = 1000;
-// Una vía completa ("Avenida Boyacá") viene como `route` con un punto en la mitad de 30 km de
-// calle. Solo se acepta como punto si su caja es corta; si no, no dice dónde fue el hecho.
+// Una cuadra cabe en esta caja y se guarda como punto. Una vía completa ("Avenida Boyacá",
+// "Calle 26") viene como `route` con el punto en la mitad de varios kilómetros: eso no dice
+// dónde fue el hecho, así que se guarda como corredor de la vía, no como ese punto.
 const MAX_ROUTE_VIEWPORT_M = 1000;
 
 const latLng = z.object({ lat: z.number(), lng: z.number() });
@@ -73,7 +74,7 @@ export function classifyGeocodeResponse(response: GoogleGeocodeResponse): Geocod
   if (hasAny(result.types, POINT_TYPES)) {
     if (result.types.includes('route')) {
       const diagonal = haversineM([southwest.lng, southwest.lat], [northeast.lng, northeast.lat]);
-      if (diagonal > MAX_ROUTE_VIEWPORT_M) return null;
+      if (diagonal > MAX_ROUTE_VIEWPORT_M) return name ? { kind: 'street', name, point } : null;
     }
     return { kind: 'point', point };
   }
@@ -89,37 +90,59 @@ export function classifyGeocodeResponse(response: GoogleGeocodeResponse): Geocod
   return null;
 }
 
+// "Ciclorruta de la 26" geocodifica como la ciudad entera. Si el texto nombra una vía con número,
+// se vuelve a preguntar por esa vía ("Calle 26"). Carrera se conserva; el resto cae en calle,
+// que es como Bogotá nombra la 26.
+export function numberedStreetQuery(text: string): string | null {
+  const normalized = normalizeText(text);
+  const match = normalized.match(
+    /\b(?:calle|carrera|avenida|ciclorruta|diagonal|transversal)\b(?:\s+(?:de|del|la|el|los|las))*\s+(\d{1,3}[a-z]?)\b/,
+  );
+  const number = match?.[1];
+  if (!number) return null;
+  const kind = /\bcarrera\b/.test(normalized) ? 'Carrera' : 'Calle';
+  return `${kind} ${number}`;
+}
+
 export function createGoogleGeocoder(options: { apiKey: string; fetch?: typeof fetch; retryBaseMs?: number }): Geocoder {
   const doFetch = options.fetch ?? fetch;
   const box = PARAMS.urbanBbox;
 
+  async function request(address: string): Promise<GoogleGeocodeResponse> {
+    const params = new URLSearchParams({
+      address,
+      region: 'co',
+      language: 'es',
+      components: 'locality:Bogotá|country:CO',
+      bounds: `${box.minLat},${box.minLng}|${box.maxLat},${box.maxLng}`,
+      key: options.apiKey,
+    });
+    const response = await doFetch(`${GEOCODE_URL}?${params}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    if (!response.ok) {
+      const message = `Google Geocoding respondió ${response.status}`;
+      throw isRetryableStatus(response.status) ? new TransientError(message) : new Error(message);
+    }
+    const body = googleGeocodeResponseSchema.parse(await response.json());
+    if (body.status === 'OVER_QUERY_LIMIT' || body.status === 'UNKNOWN_ERROR') {
+      throw new TransientError(`Google Geocoding: ${body.status}`);
+    }
+    // REQUEST_DENIED o INVALID_REQUEST: la clave o el pedido están mal; reintentar no ayuda.
+    if (body.status !== 'OK' && body.status !== 'ZERO_RESULTS') {
+      throw new Error(`Google Geocoding: ${body.status} ${body.error_message ?? ''}`.trim());
+    }
+    return body;
+  }
+
+  async function lookup(address: string, allowStreetRetry: boolean): Promise<GeocodeResult> {
+    const body = await request(address);
+    const classified = body.status === 'OK' ? classifyGeocodeResponse(body) : null;
+    if (classified || !allowStreetRetry) return classified;
+    const retry = numberedStreetQuery(address);
+    if (!retry || normalizeText(retry) === normalizeText(address)) return null;
+    return lookup(retry, false);
+  }
+
   return {
-    geocode: (locationText) =>
-      withRetry(
-        async () => {
-          const params = new URLSearchParams({
-            address: locationText,
-            region: 'co',
-            language: 'es',
-            components: 'locality:Bogotá|country:CO',
-            bounds: `${box.minLat},${box.minLng}|${box.maxLat},${box.maxLng}`,
-            key: options.apiKey,
-          });
-          const response = await doFetch(`${GEOCODE_URL}?${params}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-          if (!response.ok) {
-            const message = `Google Geocoding respondió ${response.status}`;
-            throw isRetryableStatus(response.status) ? new TransientError(message) : new Error(message);
-          }
-          const body = googleGeocodeResponseSchema.parse(await response.json());
-          if (body.status === 'ZERO_RESULTS') return null;
-          if (body.status === 'OVER_QUERY_LIMIT' || body.status === 'UNKNOWN_ERROR') {
-            throw new TransientError(`Google Geocoding: ${body.status}`);
-          }
-          // REQUEST_DENIED o INVALID_REQUEST: la clave o el pedido están mal; reintentar no ayuda.
-          if (body.status !== 'OK') throw new Error(`Google Geocoding: ${body.status} ${body.error_message ?? ''}`.trim());
-          return classifyGeocodeResponse(body);
-        },
-        { retries: RETRIES, baseDelayMs: options.retryBaseMs ?? RETRY_BASE_MS },
-      ),
+    geocode: (locationText) => withRetry(() => lookup(locationText, true), { retries: RETRIES, baseDelayMs: options.retryBaseMs ?? RETRY_BASE_MS }),
   };
 }

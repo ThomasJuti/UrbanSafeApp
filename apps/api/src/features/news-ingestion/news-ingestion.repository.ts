@@ -77,6 +77,32 @@ export async function claimArticles(db: Db, candidates: ArticleCandidate[]): Pro
   }));
 }
 
+// La misma historia ya tiene un representante que sí se lee. Estas copias quedan vistas para
+// que la corrida siguiente no las mande al LLM.
+export async function recordDiscardedCandidates(db: Db, candidates: ArticleCandidate[], reason: string): Promise<void> {
+  if (candidates.length === 0) return;
+  await db
+    .insertInto('news_articles')
+    .values(
+      candidates.map((candidate) => ({
+        url: candidate.url,
+        google_link: candidate.googleLink,
+        normalized_title: candidate.normalizedTitle,
+        media_key: candidate.mediaKey,
+        media_name: candidate.mediaName,
+        title: candidate.title,
+        summary: candidate.summary,
+        feed: candidate.feed,
+        published_at: candidate.publishedAt,
+        status: 'discarded' as const,
+        discard_reason: reason,
+        processed_at: new Date(),
+      })),
+    )
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+}
+
 export type ExtractionRecord = {
   extractedType: IncidentType | null;
   locationText: string | null;
@@ -130,7 +156,8 @@ export async function markFailed(db: Db, id: string, error: unknown): Promise<vo
 export type NewsIncidentLocation =
   | { kind: 'point'; lng: number; lat: number }
   | { kind: 'neighborhood'; name: string; lng: number; lat: number; polygon: GeoJsonPolygon }
-  | { kind: 'locality'; code: string; name: string };
+  | { kind: 'locality'; code: string; name: string }
+  | { kind: 'street'; name: string; lng: number; lat: number };
 
 export type GeoJsonPolygon = { type: 'Polygon'; coordinates: [number, number][][] };
 
@@ -146,7 +173,7 @@ export type NewsIncidentInput = {
 
 export type StoredNewsIncident =
   | { outcome: NewsOutcome; incidentId: string }
-  | { outcome: 'locality_unmatched'; incidentId: null };
+  | { outcome: 'locality_unmatched' | 'street_unmatched'; incidentId: null };
 
 // Deduplicación (RN-09), fusión y registro del artículo en una sola transacción (ver la migración).
 export async function storeNewsIncident(db: Db, input: NewsIncidentInput): Promise<StoredNewsIncident> {
@@ -172,12 +199,17 @@ export async function storeNewsIncident(db: Db, input: NewsIncidentInput): Promi
       ${PARAMS.dedup.maxDistanceM}::float8,
       ${PARAMS.dedup.maxTimeGapMs / 1000}::float8,
       ${merge}::real,
-      ${max}::real
+      ${max}::real,
+      ${PARAMS.newsIngestion.streetBufferM}::float8,
+      ${PARAMS.newsIngestion.streetSnapM}::float8
     )`.execute(db);
 
   const row = rows[0];
   if (!row) throw new Error('submit_news_incident no devolvió fila');
-  if (row.r_outcome === 'locality_unmatched' || !row.r_incident_id) return { outcome: 'locality_unmatched', incidentId: null };
+  if (row.r_outcome === 'locality_unmatched' || row.r_outcome === 'street_unmatched' || !row.r_incident_id) {
+    if (row.r_outcome === 'street_unmatched') return { outcome: 'street_unmatched', incidentId: null };
+    return { outcome: 'locality_unmatched', incidentId: null };
+  }
   return { outcome: row.r_outcome, incidentId: row.r_incident_id };
 }
 

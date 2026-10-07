@@ -15,6 +15,7 @@ export const geocodeResultSchema = z
     z.object({ kind: z.literal('point'), point: latLngSchema }),
     z.object({ kind: z.literal('neighborhood'), name: z.string().min(1), point: latLngSchema, viewport: viewportSchema }),
     z.object({ kind: z.literal('locality'), name: z.string().min(1), point: latLngSchema }),
+    z.object({ kind: z.literal('street'), name: z.string().min(1), point: latLngSchema }),
   ])
   .nullable();
 // null: no se encontró un lugar dentro del casco urbano más preciso que "Bogotá".

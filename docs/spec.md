@@ -38,7 +38,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Precalculado.** `road_edges.risk` guarda `riesgo(tramo, franja)` para las 4 franjas; las funciones SQL `refresh_edge_risk` y `refresh_time_multipliers` lo calculan. Las franjas se cuentan en hora de Bogotá.
   - **Horizonte.** El riesgo reciente usa los incidentes visibles de la misma ventana de 7 días del mapa.
   - **Localidad del tramo.** Se asigna por su punto medio al importar el grafo o el riesgo base. Unos 19 500 tramos caen en municipios vecinos (Soacha, Mosquera, Chía…): no tienen localidad, así que su riesgo base es 0 y su multiplicador es 1.
-  - **Recálculo incremental.** Se recalcula al crearse o cambiar un incidente, por eventos del bus, agrupados en 300 ms y solo sobre los tramos a menos de R. Tarda unos 165 ms.
+  - **Recálculo incremental.** Se recalcula al crearse o cambiar un incidente, por eventos del bus, agrupados en 300 ms. Un punto toca los tramos a menos de R. Un área (barrio, localidad o vía) toca solo los tramos que caen adentro, buscándolos desde el polígono con el índice. Medir la distancia contra el polígono, tramo por tramo, tardaba 78 s en Ciudad Bolívar y 110 s en las cuatro localidades de la primera corrida de noticias; con el índice, 3,5 s y 3 s.
   - **Recálculo completo.** Cada hora se recalcula todo para que el decaimiento avance (unos 4 s, escribiendo solo los tramos que cambian). Cada día se recalcula el multiplicador horario.
   - **Concurrencia.** Los recálculos van en una cola en el proceso y con un advisory lock en la base.
   - **Compactación.** Tras importar, `VACUUM FULL` de `road_edges`: reescribir el riesgo de toda la ciudad duplica la tabla y una ruta en frío pasaba de 3 s.
@@ -80,14 +80,14 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Recálculo de riesgo sin acumulación.** A lo sumo corre un lote incremental y espera otro: lo que llega durante la corrida se suma al lote que espera.
   - **SQL de `route_between`.** La función arma su consulta con literales escapados (`%L`) en vez de interpolar texto (`%s`).
 - **Ingesta de noticias (M1, F3; RN-01, RN-09, RN-11).**
-  - **Fuentes.** Las 8 consultas de Google News (con `when:1d`) y los 4 feeds directos del spec, cada 45 min y una vez al arrancar, solo con `backgroundJobs`. Los ítems del RSS se validan con zod; se ignora lo publicado hace más de 7 días.
-  - **Filtro previo.** Los feeds directos traen todas las secciones (deportes, farándula…). Solo pasan al LLM los que mencionan algún término de delito; Google News ya viene filtrado por la consulta.
+  - **Fuentes.** Las 8 consultas de Google News (con `intitle:` y `when:1d`) y los 4 feeds directos del spec, cada 45 min y una vez al arrancar, solo con `backgroundJobs`. Los ítems del RSS se validan con zod; se ignora lo publicado hace más de 7 días.
+  - **Filtro previo.** Los feeds directos traen todas las secciones (deportes, farándula…). Solo pasan al LLM los que mencionan algún término de delito. Un título de seguimiento (captura, condena, operativo, entrevista, "qué se sabe", Medicina Legal) se descarta si no nombra también el delito. Varios medios con el mismo nombre propio, o con dos palabras raras en común, cuentan como una sola historia: se lee una y las demás quedan vistas.
   - **Duplicado exacto antes del LLM (RN-09).** `news_articles` guarda cada artículo visto, con llaves únicas por URL original, por enlace de Google y por título normalizado más medio (el dominio). Lo ya visto no vuelve al LLM. Lo que falló se reintenta hasta 3 corridas.
   - **Enlaces de Google News.** Se intenta decodificar el id sin red. Hoy todos los enlaces usan el formato nuevo cifrado y ninguno se decodifica (0 de 112 el 2026-10-06), así que la deduplicación exacta de Google News usa título y medio.
   - **Extracción.** Un extractor detrás de una interfaz, hoy Gemini 3.5 Flash-Lite con `@google/genai` (`LLM_PROVIDER`, `LLM_MODEL`), con salida estructurada validada con zod. Devuelve relevancia, si fue en Bogotá, tipo del catálogo, texto de ubicación, fecha y hora. Sin hora, `hora_conocida` es falsa y se usa el mediodía de esa fecha, sin pasar de la publicación (RN-11). Las llamadas se espacian para no pasar de la cuota por minuto: el plan gratuito de Gemini da 15 y, sin espaciarlas, la primera corrida real perdió 62 de 141 artículos por 429.
-  - **Geocodificación.** Google Geocoding detrás de su interfaz, restringida a Bogotá y al casco urbano. Calles, cruces y sitios son puntos; barrios, áreas con la caja de Google; localidades, la geometría de `locality_base_risk`. Se descarta lo que es solo "Bogotá", queda fuera del casco urbano o es una vía larga. Caché de 30 días por texto normalizado, también de los no encontrados.
-  - **Confianza.** 0,7, por 0,5 si es un barrio y por 0,25 si es una localidad.
-  - **Mismo hecho (RN-09).** La función SQL `submit_news_incident` toma el mismo advisory lock que los reportes y usa `find_matching_incident`. Al fusionar suma la fuente, sube 0,1 hasta 1 y conserva el tipo más grave. Un barrio que llega absorbe los puntos que caen adentro. Una localidad no absorbe ni es absorbida por contención: solo se junta con otra noticia de la misma localidad. La misma noticia dos veces no suma.
+  - **Geocodificación.** Google Geocoding detrás de su interfaz, restringida a Bogotá y al casco urbano. Cruces, direcciones y una cuadra son puntos; barrios, áreas con la caja de Google; localidades, la geometría de `locality_base_risk`. Una vía larga (la caja de Google pasa de 1 km, como la Calle 26 o la Boyacá) no se guarda como el punto del medio ni como esa caja: se arma un corredor de 30 m con los tramos de OSM del mismo nombre. Si Google dice "Carrera 72" y OSM tiene más tramos en "Avenida Carrera 72", se usa la avenida. Si el nombre no está en el grafo ("Avenida El Dorado"), se toma la vía con nombre a menos de 80 m del punto. "Ciclorruta de la 26" se vuelve a preguntar como "Calle 26". Se descarta lo que es solo "Bogotá", queda fuera del casco urbano o no coincide con ninguna vía. Caché de 30 días por texto normalizado, también de los no encontrados.
+  - **Confianza.** 0,7, por 0,5 si es un barrio o una vía y por 0,25 si es una localidad.
+  - **Mismo hecho (RN-09).** La función SQL `submit_news_incident` toma el mismo advisory lock que los reportes y usa `find_matching_incident`. Al fusionar suma la fuente, sube 0,1 hasta 1 y conserva el tipo más grave. Un barrio que llega absorbe los puntos que caen adentro. Una localidad no absorbe ni es absorbida, tampoco por otra noticia de la misma localidad: el área es demasiado grande para asumir que es el mismo hecho. Dos noticias que solo nombran la misma vía sí se fusionan, y esa vía no absorbe un punto que caiga encima. La misma noticia dos veces no suma.
   - **Eventos.** Cada incidente creado o fusionado emite `incident.created` o `incident.updated`: `risk` recalcula y los mapas lo reciben.
   - **Concurrencia.** Una sola corrida a la vez (bandera en el proceso y advisory lock de sesión), 4 artículos en paralelo hacia el LLM y el geocodificador, con timeouts y reintentos con backoff.
   - **A mano.** `pnpm ingest:news` hace una corrida y muestra el resumen; con `--dry-run` solo lee los feeds. `pnpm ingest:sample` exporta los últimos 50 artículos procesados para la revisión de §7.
@@ -95,7 +95,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### Siguiente
 
-- **Ingesta de noticias con claves reales (M1).** Falta correrla con `GEMINI_API_KEY` y `GOOGLE_GEOCODING_API_KEY` y revisar a mano los 50 artículos de `pnpm ingest:sample` contra los criterios de calidad de la extracción y deduplicación (§7). Primera lectura de los feeds (2026-10-06, `--dry-run`): 358 ítems; 144 candidatos únicos tras quitar 183 sin términos de delito y los repetidos entre consultas.
+- **Revisión manual de la ingesta (M1, §7).** La primera corrida con claves ya guardó 7 incidentes y descartó 137 (131 sin delito en el texto, 6 sin ubicación útil). No alcanza para el criterio de 50 artículos: faltan corridas y una lectura humana del tipo y del lugar. Tres de las descartadas solo decían la 26 ("Calle 26", "Avenida 26", "Ciclorruta de la 26"); con la regla nueva se guardarían, pero esas filas ya quedaron descartadas y no se reprocesan solas.
 
 - **Valor de la ruta segura.** La primera medición no llega al 70 %. Falta decidir si se ajusta α o el modelo de riesgo para que la ruta más segura se aparte de la más rápida.
 
@@ -135,19 +135,19 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
   | Consulta | Cubre |
   |---|---|
-  | `hurto Bogotá` | Hurto a persona (amplia) |
-  | `robo celular Bogotá` | Hurto a persona |
-  | `robo de moto Bogotá` | Hurto de moto |
-  | `robo de bicicleta Bogotá` | Hurto de bicicleta |
-  | `atraco Bogotá` | Atraco con arma |
-  | `riña Bogotá` | Riña, lesiones personales |
-  | `homicidio OR sicariato Bogotá` | Homicidio / sicariato |
-  | `domiciliario robo OR atraco Bogotá` | Hechos contra domiciliarios |
+  | `intitle:hurto Bogotá` | Hurto a persona (amplia) |
+  | `intitle:robo celular Bogotá` | Hurto a persona |
+  | `intitle:robo moto Bogotá` | Hurto de moto |
+  | `intitle:robo bicicleta Bogotá` | Hurto de bicicleta |
+  | `intitle:atraco Bogotá` | Atraco con arma |
+  | `intitle:riña Bogotá` | Riña, lesiones personales |
+  | `(intitle:homicidio OR intitle:sicariato) Bogotá` | Homicidio / sicariato |
+  | `(intitle:robo OR intitle:atraco) domiciliario Bogotá` | Hechos contra domiciliarios |
 
   Se usa el operador `when:1d` para limitar a noticias del último día. Verificado el 2026-10-06: el RSS lo respeta (43 artículos de las últimas 24 h frente a 102 de hasta 5 días sin el operador).
 
 - Extraer de cada artículo: tipo de delito, texto de ubicación, fecha/hora y relevancia (LLM con salida estructurada), a partir del título y el resumen disponibles en el feed. Si el artículo no indica la hora del hecho, se registra solo la fecha (ver RN-11).
-- Geocodificar el texto de ubicación a coordenadas. Si solo se identifica el barrio o la localidad, registrar el incidente como área del nivel correspondiente, con confianza reducida (ver Parámetros iniciales).
+- Geocodificar el texto de ubicación a coordenadas. Si solo se identifica el barrio, la localidad o una vía sin número ni cruce, registrar el incidente como área del nivel correspondiente, con confianza reducida (ver Parámetros iniciales). La vía usa el corredor de los tramos de OSM, no el punto medio que devuelve el geocodificador.
 - Descartar artículos irrelevantes, fuera de Bogotá o sin ubicación identificable.
 - Los enlaces de Google News vienen codificados (`news.google.com/rss/articles/...`). Se intenta decodificarlos para obtener la URL original del medio; si la decodificación falla, el artículo se conserva con el enlace de Google News y la deduplicación exacta usa el título normalizado más el nombre del medio (RN-09).
 - Deduplicar obligatoriamente según RN-09: Google News repite noticias de los feeds directos y varios medios publican el mismo hecho.
@@ -226,7 +226,7 @@ Las noticias y los reportes comunitarios terminan en la misma entidad, de modo q
 | `id` | Identificador único |
 | `tipo` | Valor del catálogo de delitos (ver tabla siguiente) |
 | `gravedad` | 1–5, determinada por el tipo |
-| `ubicacion` | Punto (lat, lng), o área (barrio o localidad) cuando la fuente solo indica una zona |
+| `ubicacion` | Punto (lat, lng), o área (barrio, localidad o vía) cuando la fuente solo indica una zona |
 | `ocurrido_en` | Cuándo ocurrió el hecho (mejor estimación) |
 | `hora_conocida` | Si `ocurrido_en` incluye una hora confiable o solo la fecha (RN-11) |
 | `reportado_en` | Cuándo entró al sistema |
@@ -299,11 +299,12 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
 - **RN-09 · Deduplicación.**
   - **Duplicado exacto:** misma URL original del artículo o título casi idéntico. Si la URL de Google News no se pudo decodificar (M1), se compara el título normalizado más el medio. Se descarta la copia.
   - **Mismo hecho:** dos incidentes con tipos iguales o compatibles (sección 4), a menos de 500 m entre sí (o con el punto dentro del área del otro, solo si el área es de nivel barrio) y con menos de 24 h de diferencia en `ocurrido_en` se fusionan en uno solo que conserva todas sus fuentes y el tipo de mayor gravedad. La fusión aumenta la confianza del incidente.
-  - Un incidente de nivel localidad nunca absorbe a otros por contención: el área es demasiado grande para asumir que es el mismo hecho.
+  - Un incidente de nivel localidad nunca absorbe a otros por contención, ni se fusiona con otra noticia solo porque nombran la misma localidad: el área es demasiado grande para asumir que es el mismo hecho.
+  - Dos noticias que solo ubican el hecho en la misma vía, sin número ni cruce, se fusionan si el tipo es compatible y hay menos de 24 h. El corredor no absorbe un punto que caiga sobre la vía.
   - Un reporte comunitario que coincide con un incidente existente cuenta como confirmación (RN-04) en lugar de crear un incidente nuevo. Si quien reporta ya es fuente de ese incidente o ya votó sobre él, no cuenta de nuevo. El reporte se compara con un `ocurrido_en` igual al momento del envío.
 - **RN-10 · Riesgo de un tramo.**
   - Aporte de un incidente puntual: `peso × max(0, 1 − d / R)`, donde `d` es la distancia del incidente al tramo y `R` el radio de influencia.
-  - Aporte de un incidente de área: `peso × min(1, A₀ / A)` a cada tramo dentro del área, donde `A` es el área del barrio o localidad y `A₀ = π·R²`. Así el peso se reparte en proporción al tamaño de la zona.
+  - Aporte de un incidente de área: `peso × min(1, A₀ / A)` a cada tramo dentro del área, donde `A` es el área del barrio, de la localidad o del corredor de la vía y `A₀ = π·R²`. Así el peso se reparte en proporción al tamaño de la zona.
   - `reciente(tramo) = 1 − e^(−S/k)`, donde `S` es la suma de aportes de los incidentes visibles (RN-12).
   - `riesgo(tramo, hora) = min(1, (w_base · base(localidad) + w_reciente · reciente(tramo)) × m(localidad, franja(hora)))`.
 - **RN-11 · Multiplicador horario.**
@@ -339,7 +340,8 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
 | Ingesta de noticias (M1) | Cada 45 min · artículos de hasta 7 días · caché de geocodificación de 30 días · 3 intentos por artículo · máximo 15 llamadas al LLM por minuto (`LLM_MAX_REQUESTS_PER_MINUTE`) | Dentro de los 30–60 min de M1; lo más viejo no se vería en el mapa |
-| Factor de confianza por área (M1) | Barrio × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
+| Factor de confianza por área (M1) | Barrio × 0,5 · Vía × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |
+| Corredor de una vía (M1) | 30 m a cada lado del eje de OSM · la vía con nombre a menos de 80 m si el nombre no coincide | Una noticia que solo dice "Calle 26" no se tira, ni se guarda como un punto en la mitad de la avenida |
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
 | Reputación (RN-04) | +0,02 de confianza inicial por punto de saldo · Máximo 0,5 | Unas 10 confirmaciones netas llevan a un reportero al máximo |
 | Umbral de visibilidad (RN-12) | 0,1 | Con 2 negaciones, un reporte comunitario nuevo se oculta |

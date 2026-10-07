@@ -80,12 +80,20 @@ describe('locate', () => {
     expect(locate(null, LOCALITIES)).toEqual({ discard: 'not_geocoded' });
     expect(locate({ kind: 'locality', name: 'Sibaté', point }, LOCALITIES)).toEqual({ discard: 'locality_unmatched' });
   });
+
+  it('una vía larga se guarda como vía, sin convertirla en la caja de Google', () => {
+    expect(locate({ kind: 'street', name: 'Avenida Calle 26', point }, LOCALITIES)).toEqual({
+      kind: 'street',
+      location: { kind: 'street', name: 'Avenida Calle 26', lng: point.lng, lat: point.lat },
+    });
+  });
 });
 
 describe('newsConfidence (Parámetros iniciales)', () => {
   it('parte de 0,7 y reduce por el nivel del área', () => {
     expect(newsConfidence('point')).toBeCloseTo(0.7);
     expect(newsConfidence('neighborhood')).toBeCloseTo(0.35);
+    expect(newsConfidence('street')).toBeCloseTo(0.35);
     expect(newsConfidence('locality')).toBeCloseTo(0.175);
   });
 });
