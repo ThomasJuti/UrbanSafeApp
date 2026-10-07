@@ -1,4 +1,4 @@
-import type { DeliveryState, DomainEvents, RouteKind } from '@urbansafe/shared';
+import type { DeliveryAlert, DeliveryState, DomainEvents, RouteKind } from '@urbansafe/shared';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '../../shared/socket';
 import { deliveryApi, type DeliveryCall, type DeliveryFailure } from './api';
@@ -40,6 +40,7 @@ export function useDeliverySession() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState(false);
   const [booting, setBooting] = useState(true);
+  const [alert, setAlert] = useState<DeliveryAlert | null>(null);
   const idRef = useRef<string | null>(null);
   const pendingRef = useRef(false);
   const actionsRef = useRef<SessionActions>(null!);
@@ -50,6 +51,7 @@ export function useDeliverySession() {
         idRef.current = incoming.sessionId;
         saveSessionId(incoming.sessionId);
         setState((current) => mergeState(current, incoming));
+        setAlert(incoming.status === 'riding' ? incoming.alert : null);
       },
       showFailure(reason) {
         setNotice(failureNotice(reason));
@@ -114,19 +116,29 @@ export function useDeliverySession() {
     const socket = getSocket();
     const onUpdated = ({ state: incoming }: DomainEvents['delivery.updated']) => {
       setState((current) => mergeState(current, incoming));
+      setAlert((current) => {
+        if (incoming.status !== 'riding') return null;
+        return incoming.alert ?? current;
+      });
     };
     const onPosition = (event: DomainEvents['delivery.position']) => {
       setState((current) => applyPosition(current, event));
+    };
+    const onAlert = ({ sessionId, incident }: DomainEvents['alert.raised']) => {
+      if (sessionId !== idRef.current) return;
+      setAlert({ incidentId: incident.id, type: incident.type, point: incident.location.point });
     };
     const onConnect = () => {
       if (idRef.current) joinSession(idRef.current, actionsRef.current, () => startNew(actionsRef.current));
     };
     socket.on('delivery.updated', onUpdated);
     socket.on('delivery.position', onPosition);
+    socket.on('alert.raised', onAlert);
     socket.on('connect', onConnect);
     return () => {
       socket.off('delivery.updated', onUpdated);
       socket.off('delivery.position', onPosition);
+      socket.off('alert.raised', onAlert);
       socket.off('connect', onConnect);
     };
   }, []);
@@ -139,6 +151,7 @@ export function useDeliverySession() {
 
   return {
     state,
+    alert,
     notice,
     pending,
     booting,
@@ -152,6 +165,7 @@ export function useDeliverySession() {
       });
     },
     next: () => void (state && run(() => deliveryApi.next(state.sessionId))),
+    recalculate: () => void (state && run(() => deliveryApi.recalculate(state.sessionId))),
     retry: () => void startNew(actionsRef.current),
   };
 }

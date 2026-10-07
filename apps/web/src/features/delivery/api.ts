@@ -28,5 +28,6 @@ export const deliveryApi = {
     call(() => postJson(sessionPath(id, 'route'), { kind }, deliveryStateResponseSchema)),
   setSpeed: (id: string, multiplier: number) =>
     call(() => postJson(sessionPath(id, 'speed'), { multiplier }, deliveryStateResponseSchema)),
+  recalculate: (id: string) => call(() => postJson(sessionPath(id, 'recalculate'), {}, deliveryStateResponseSchema)),
   next: (id: string) => call(() => postJson(sessionPath(id, 'next'), {}, deliveryStateResponseSchema)),
 };

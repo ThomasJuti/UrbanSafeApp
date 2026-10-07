@@ -32,6 +32,7 @@ function state(overrides: Partial<DeliveryState> = {}): DeliveryState {
     progressM: 250,
     speedMultiplier: 10,
     summary: null,
+    alert: null,
     ...overrides,
   };
 }

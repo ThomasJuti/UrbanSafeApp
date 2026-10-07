@@ -6,7 +6,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 ### Hecho
 
-- **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate.
+- **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate. La conexión verifica la CA de Supabase (`db/supabase-ca.crt`), en el pool del API y en dbmate (`sslmode=verify-full`).
 - **Modelo `Incidente` (sección 4, RN-01).** Esquema zod, catálogo de delitos y parámetros iniciales en `packages/shared`. Tablas `incidents` e `incident_sources` con geometría en SRID 4326, índice GiST y RLS activado sin políticas. Los datos de prueba están en `db/seeds` y usan el prefijo de id `00000000-0000-4000-8000-`.
 - **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes de los últimos 7 días con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
 - **Reportes comunitarios, parte 1 (M3: apodo, reportar y tiempo real; RN-04; RN-09 para reportes de la comunidad).**
@@ -31,6 +31,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - **Riesgo base por localidad (M2, `RiesgoBaseZona`).**
   - **Importación.** `pnpm db:import-base-risk` descarga Delito de Alto Impacto por localidad y reemplaza `locality_base_risk` en una transacción. El área y la normalización se calculan en SQL.
   - **Periodo.** Hoy usa enero a agosto de 2026 y quedan 20 localidades.
+  - **Revisión.** Con los trabajos de fondo, al arrancar y cada 30 días se vuelve a importar si la última carga ya cumplió ese plazo.
   - **Lectura.** `GET /api/base-risk` devuelve las geometrías simplificadas (unos 50 KB) con una hora de caché.
   - **Mapa.** `/reportar` pinta cada localidad según su riesgo, debajo de las etiquetas, con una leyenda.
   - **Limitación.** En Chapinero, Santa Fe, Usaquén y las localidades del sur, el área incluye cerros y zona rural, así que su tasa queda más baja que la del casco urbano.
@@ -46,10 +47,14 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Cálculo.** `POST /api/routes` devuelve rápida, balanceada y segura con α = 0, 1 y 5 sobre el riesgo de la franja actual. Las tres van en serie dentro de una sola consulta: en paralelo se estorban en la CPU de la base y tardaban 2,3 s en vez de 0,7 s.
   - **Nivel e incidentes.** Cada opción trae su nivel de riesgo (promedio ponderado por longitud, que con velocidad fija equivale a ponderar por tiempo) y los incidentes visibles de los últimos 7 días a menos de R de la ruta.
   - **Pool propio.** El ruteo usa su propio pool, con el `statement_timeout` puesto en la sesión, así que cada pedido hace un solo viaje a la base.
+  - **Caché.** Un resultado se guarda 5 minutos por par de vértices, franja y α. Al terminar un recálculo de riesgo se tira. Un viaje distinto no pega en la caché: la ráfaga de 30 trayectos distintos sigue dependiendo de la CPU de la base.
   - **Vista.** `/domiciliario` muestra las 3 opciones como tarjetas con tiempo, tiempo extra frente a la más rápida, nivel de riesgo e incidentes cercanos. La elegida se pinta en azul y las demás en gris; también se elige tocando la línea.
   - **Carga medida (`pnpm load:routes`, desde local contra São Paulo).**
     - **Sostenida.** 30 usuarios pidiendo cada 5 a 15 s durante 60 s, con trayectos de 2 a 8 km: p50 474 ms y p95 1 380 ms. **Cumple** el presupuesto de 1,5 s.
-    - **Ráfaga.** Los 30 pedidos a la vez dan p95 3,5 s. El límite es la CPU de la base, no la cola del API: subir la concurrencia a 8 casi no cambia el resultado.
+    - **Ráfaga.** Los 30 pedidos a la vez daban p95 3,5 s en `load:routes` y 4,8 s al aceptar en `load:delivery`. El 2026-10-06, `pnpm load:demo` (30 sesiones y 30 reportes a la vez, sin la ingesta de arranque) midió aceptar en p95 10,6 s. Sigue sin cumplir 1,5 s. La caché no entra en esa ráfaga: cada viaje es un par de vértices distinto, y averiguar los vértices suma un viaje a la base.
+    - **Reporte en el socket.** En esa misma corrida, el p95 desde el envío hasta `incident.created` en otra sesión fue 3,6 s. No cumple 1 s. El tiempo es el del insert: los reportes comparten un advisory lock, así que 30 a la vez se serializan. El socket sale en cuanto el insert termina.
+    - **Alerta.** Un reporte puesto sobre la ruta de una sesión en camino tardó 4,8 s en llegar como `alert.raised`. No cumple 2 s; arrastra la espera del insert.
+    - **Recorrido.** De las sesiones que salieron, 24 entregaron a 20× y 2 se quedaron sin ruta.
 
 - **Simulador de pedidos, parte 1 (M7 en el servidor; F1 pasos 1 a 4, 6 y 7; RN-03).**
   - **Pedido.** `POST /api/delivery/sessions` crea una sesión con un pedido al azar: recogida y entrega ajustadas al vértice del grafo más cercano. Si un punto queda a más de 200 m de una calle, se descarta. El primer pedido también sortea dónde arranca el domiciliario; los siguientes salen de donde terminó.
@@ -92,16 +97,19 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Concurrencia.** Una sola corrida a la vez (bandera en el proceso y advisory lock de sesión), 4 artículos en paralelo hacia el LLM y el geocodificador, con timeouts y reintentos con backoff.
   - **A mano.** `pnpm ingest:news` hace una corrida y muestra el resumen; con `--dry-run` solo lee los feeds. `pnpm ingest:sample` exporta los últimos 50 artículos procesados para la revisión de §7.
   - **Sin claves.** Si falta `GEMINI_API_KEY` o `GOOGLE_GEOCODING_API_KEY`, el servidor avisa una vez y arranca sin ingesta.
+- **Alertas en ruta (M6, RN-08).**
+  - **Cuándo.** Mientras la sesión va en camino, un incidente visible avisa si cae a 300 m de la ruta y dentro del próximo kilómetro, con `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h. Lo ya recorrido no avisa. Cada incidente avisa una sola vez por tramo.
+  - **Área.** Un barrio, una vía o una localidad usa su geometría: si el próximo kilómetro entra en esa zona, avisa.
+  - **Candidatos.** Al pasar a `riding` se leen una vez. El tick solo recorre esa lista. Un incidente nuevo o actualizado se compara una vez contra las sesiones en camino.
+  - **Aviso.** `alert.raised` va solo a la sala privada de la sesión. En `/domiciliario` se muestra el tipo, un punto en el mapa y "Recalcular ruta".
+  - **Recalcular.** `POST /api/delivery/sessions/:id/recalculate` solo vale en camino y con un aviso activo. Pausa, calcula las 3 rutas desde la posición actual hasta el destino del tramo y vuelve a la elección. La exposición del resumen suma lo ya recorrido y la ruta nueva; la rápida de referencia sigue siendo la del inicio del tramo.
+  - **Presupuestos.** En `load:demo`, la alerta llegó a los 4,8 s (no cumple 2 s): incluye la espera del insert del reporte. Recalcular usa el mismo cálculo que las 3 rutas, que en ráfaga tampoco entra en 1 s.
 
 ### Siguiente
 
-- **Revisión manual de la ingesta (M1, §7).** La primera corrida con claves ya guardó 7 incidentes y descartó 137 (131 sin delito en el texto, 6 sin ubicación útil). No alcanza para el criterio de 50 artículos: faltan corridas y una lectura humana del tipo y del lugar. Tres de las descartadas solo decían la 26 ("Calle 26", "Avenida 26", "Ciclorruta de la 26"); con la regla nueva se guardarían, pero esas filas ya quedaron descartadas y no se reprocesan solas.
+- **Revisión manual de la ingesta (M1, §7).** La primera corrida con claves ya guardó 7 incidentes y descartó 137 (131 sin delito en el texto, 6 sin ubicación útil). Hay una muestra de los últimos 50 artículos procesados en `docs/m1-muestra.md`, con la columna de tipo y ubicación correcta vacía: falta la lectura humana. No se anota el 80 %. Tres de las descartadas solo decían la 26 ("Calle 26", "Avenida 26", "Ciclorruta de la 26"); con la regla nueva se guardarían, pero esas filas ya quedaron descartadas y no se reprocesan solas.
 
-- **Valor de la ruta segura.** La primera medición no llega al 70 %. Falta decidir si se ajusta α o el modelo de riesgo para que la ruta más segura se aparte de la más rápida.
-
-- **Revisión mensual del riesgo base (M2).** Por ahora la importación se corre a mano; falta programarla.
-- **Caché de rutas.** Cachear por (origen, destino, versión del riesgo), como dice AGENTS. Ayudaría sobre todo en ráfagas.
-- **Verificar el certificado de Supabase.** Hoy la conexión a la base va cifrada pero sin validar la CA. Falta agregar el certificado del proyecto y conectar con `verify-full`.
+- **Valor de la ruta segura.** La medición con α = 5 no llega al 70 %. Se volvió a medir el 2026-10-06 con α 20 y α 50, 30 pedidos cada uno: ninguno cumple (0 %). Con α 20 la media es 4 % menos exposición y 1 % de tiempo extra; con α 50, 3 % y 3 %. α se queda en 5. El riesgo de los tramos es bajo y parecido, y subir α no aparta la ruta segura de la rápida.
 
 ## 1. Visión
 
@@ -338,6 +346,8 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
 | Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
 | Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
+| Caché de rutas (M5) | 5 min · hasta 200 resultados · se invalida al recalcular el riesgo | Reintentos del mismo par de vértices no vuelven a correr Dijkstra |
+| Revisión del riesgo base (M2) | Cada 30 días, al arrancar y mientras el proceso sigue vivo | Solo con los trabajos de fondo |
 | Confianza inicial | Noticias 0,7 · Comunidad 0,3 | Los reportes comunitarios necesitan confirmación |
 | Ingesta de noticias (M1) | Cada 45 min · artículos de hasta 7 días · caché de geocodificación de 30 días · 3 intentos por artículo · máximo 15 llamadas al LLM por minuto (`LLM_MAX_REQUESTS_PER_MINUTE`) | Dentro de los 30–60 min de M1; lo más viejo no se vería en el mapa |
 | Factor de confianza por área (M1) | Barrio × 0,5 · Vía × 0,5 · Localidad × 0,25 | Una ubicación imprecisa pesa menos |

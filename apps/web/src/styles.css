@@ -393,3 +393,15 @@ body,
   gap: 8px;
   margin-top: 16px;
 }
+
+.alert-banner {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.alert-banner p {
+  margin: 0 0 10px;
+}

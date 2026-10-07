@@ -7,6 +7,10 @@ export type DomainEvents = {
   'incident.updated': { incident: MapIncident };
   'delivery.updated': { state: DeliveryState };
   'delivery.position': { sessionId: string; leg: DeliveryLeg; position: LatLng; progressM: number };
+  // Solo a la sala de esa sesión (RN-03). El domiciliario decide si recalcula (RN-08).
+  'alert.raised': { sessionId: string; incident: MapIncident };
+  // La caché de rutas se tira: el costo de los tramos ya no es el que se guardó.
+  'risk.refreshed': { updatedEdges: number };
 };
 
 export type DomainEventName = keyof DomainEvents;
@@ -14,7 +18,7 @@ export type DomainEventName = keyof DomainEvents;
 export const PUBLIC_INCIDENTS_ROOM = 'incidents';
 
 type IncidentEventName = 'incident.created' | 'incident.updated';
-type DeliveryEventName = 'delivery.updated' | 'delivery.position';
+type DeliveryEventName = 'delivery.updated' | 'delivery.position' | 'alert.raised';
 
 // Lo único que viaja por la sala pública. Las posiciones de domiciliarios nunca van aquí (RN-03).
 export type PublicServerEvents = {

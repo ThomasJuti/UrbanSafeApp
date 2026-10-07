@@ -29,6 +29,7 @@ export function createRiskService(db: Db, log: Log = console) {
   // Mientras corre un recálculo incremental no se programa otro: lo que llegue se junta en un solo
   // lote para después. Así una ráfaga de votos nunca deja más de un recálculo en espera.
   let incrementalRunning = false;
+  let publishRefreshed: (updatedEdges: number) => void = () => {};
 
   function schedule() {
     if (incrementalRunning || batchTimer || pending.size === 0) return;
@@ -41,6 +42,9 @@ export function createRiskService(db: Db, log: Log = console) {
     pending.clear();
     incrementalRunning = true;
     void enqueue(() => refreshEdgeRisk(db, ids))
+      .then((updated) => {
+        if (updated !== undefined) publishRefreshed(updated);
+      })
       .catch(() => undefined)
       .finally(() => {
         incrementalRunning = false;
@@ -58,6 +62,8 @@ export function createRiskService(db: Db, log: Log = console) {
       const started = Date.now();
       const updated = await refreshEdgeRisk(db, null);
       log.log(`Riesgo por tramo recalculado: ${updated} tramos cambiaron en ${Date.now() - started} ms`);
+      publishRefreshed(updated);
+      return updated;
     });
 
   const refreshMultipliersAndAll = async () => {
@@ -73,6 +79,7 @@ export function createRiskService(db: Db, log: Log = console) {
   };
 
   function start(bus: EventBus) {
+    publishRefreshed = (updatedEdges) => bus.publish('risk.refreshed', { updatedEdges });
     const unsubscribe = [
       bus.subscribe('incident.created', ({ incident }) => incidentChanged(incident.id)),
       bus.subscribe('incident.updated', ({ incident }) => incidentChanged(incident.id)),

@@ -62,3 +62,28 @@ export async function queryRoutes(
     };
   });
 }
+
+type VertexRow = { idx: number; id: string | null };
+
+// Los dos vértices del grafo más cercanos a los puntos. La caché de rutas se apoya en ellos:
+// el Dijkstra ya hace este ajuste, y repetirlo aquí evita calcular de nuevo el mismo par.
+export async function nearestVertexIds(
+  db: Db,
+  from: LatLng,
+  to: LatLng,
+): Promise<{ fromId: string; toId: string } | null> {
+  const { rows } = await sql<VertexRow>`
+    select p.idx::int as idx, v.id::text as id
+    from unnest(${[from.lng, to.lng]}::float8[], ${[from.lat, to.lat]}::float8[]) with ordinality as p(lng, lat, idx)
+    left join lateral (
+      select id from road_vertices
+      order by geom <-> ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)
+      limit 1
+    ) v on true
+  `.execute(db);
+
+  const fromId = rows.find((row) => row.idx === 1)?.id;
+  const toId = rows.find((row) => row.idx === 2)?.id;
+  if (!fromId || !toId || fromId === toId) return null;
+  return { fromId, toId };
+}

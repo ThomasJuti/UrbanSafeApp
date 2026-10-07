@@ -10,6 +10,19 @@ type Props = {
   paddingBottomPx: number;
 };
 
+function useAlertMarker(point: { lng: number; lat: number } | null) {
+  const map = useMap();
+  const lat = point?.lat;
+  const lng = point?.lng;
+  useEffect(() => {
+    if (lat === undefined || lng === undefined) return;
+    const marker = new Marker({ color: '#c2410c' }).setLngLat([lng, lat]).addTo(map);
+    return () => {
+      marker.remove();
+    };
+  }, [map, lat, lng]);
+}
+
 function usePointMarker(color: string, point: LatLng) {
   const map = useMap();
   useEffect(() => {
@@ -20,11 +33,12 @@ function usePointMarker(color: string, point: LatLng) {
   }, [map, color, point.lat, point.lng]);
 }
 
-export function DeliveryMarkers({ state, paddingBottomPx }: Props) {
+export function DeliveryMarkers({ state, alertPoint, paddingBottomPx }: Props & { alertPoint?: { lng: number; lat: number } | null }) {
   const map = useMap();
   usePointMarker('#2563eb', state.position);
   usePointMarker('#15803d', state.order.pickup);
   usePointMarker('#b91c1c', state.order.dropoff);
+  useAlertMarker(alertPoint ?? null);
 
   // El encuadre de las rutas lo hace RouteLines. Aquí solo el pedido, antes de haber rutas.
   const orderKey = `${state.sessionId}:${state.order.pickup.lat},${state.order.pickup.lng}:${state.order.dropoff.lat},${state.order.dropoff.lng}`;

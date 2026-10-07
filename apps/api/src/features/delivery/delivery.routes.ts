@@ -36,5 +36,6 @@ export function createDeliveryRoutes(service: DeliveryService) {
     .post('/sessions/:id/speed', param, zValidator('json', setSpeedBodySchema), async (c) =>
       respond(c, await service.setSpeed(c.req.valid('param').id, c.req.valid('json').multiplier)),
     )
+    .post('/sessions/:id/recalculate', param, async (c) => respond(c, await service.recalculate(c.req.valid('param').id)))
     .post('/sessions/:id/next', param, async (c) => respond(c, await service.nextOrder(c.req.valid('param').id)));
 }

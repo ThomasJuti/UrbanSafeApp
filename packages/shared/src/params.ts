@@ -22,6 +22,9 @@ export const PARAMS = {
   motorcycleSpeedKmh: 25,
   urbanBbox: { minLng: -74.23, minLat: 4.46, maxLng: -73.99, maxLat: 4.84 },
   routeClipMarginsM: [2000, 6000],
+  // Caché en memoria del proceso. Se invalida al recalcular el riesgo; el tope evita que una ráfaga
+  // de viajes distintos la haga crecer sin fin.
+  routeCache: { ttlMs: 5 * 60 * 1000, maxEntries: 200 },
   // bajo < low ≤ medio < high ≤ alto
   routeRiskLevels: { low: 0.2, high: 0.5 },
   delivery: {
@@ -52,6 +55,7 @@ export const PARAMS = {
   reputation: { stepPerBalance: 0.02, maxInitialConfidence: 0.5 },
   visibilityThreshold: 0.1,
   mapWindowMs: MAP_WINDOW_MS,
+  baseRiskReviewMs: 30 * DAY_MS,
   dedup: { maxDistanceM: 500, maxTimeGapMs: 24 * HOUR_MS },
   newsIngestion: {
     // M1 pide consultar cada 30–60 minutos.

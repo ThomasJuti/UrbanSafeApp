@@ -29,6 +29,7 @@ export function createApp(deps: {
   app.post('/api/delivery/sessions', limited('deliverySessions'));
   const deliveryRouting = limited('deliveryRouting');
   app.post('/api/delivery/sessions/:id/accept', deliveryRouting);
+  app.post('/api/delivery/sessions/:id/recalculate', deliveryRouting);
   app.post('/api/delivery/sessions/:id/next', deliveryRouting);
 
   app.get('/api/health', (c) => c.json({ ok: true }));

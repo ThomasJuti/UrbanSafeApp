@@ -21,7 +21,7 @@ export function DeliverySession({ belowLayers }: { belowLayers: string[] }) {
   return (
     <>
       {session.notice && <div className={`toast top ${session.notice.tone}`}>{session.notice.text}</div>}
-      {state && <DeliveryMarkers state={state} paddingBottomPx={SHEET_PADDING_PX} />}
+      {state && <DeliveryMarkers state={state} alertPoint={session.alert?.point ?? null} paddingBottomPx={SHEET_PADDING_PX} />}
       {routes.length > 0 && (
         <RouteLines
           routes={routes}

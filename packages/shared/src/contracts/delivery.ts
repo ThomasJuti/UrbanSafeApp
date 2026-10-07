@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { incidentTypeSchema } from '../catalog';
 import { latLngSchema } from '../geo';
 import { PARAMS } from '../params';
 import { ROUTE_KINDS, routeOptionSchema } from './routes';
@@ -29,6 +30,14 @@ export const deliverySummarySchema = z.object({
 });
 export type DeliverySummary = z.infer<typeof deliverySummarySchema>;
 
+// Lo que el aviso necesita en pantalla. El incidente completo viaja en `alert.raised`.
+export const deliveryAlertSchema = z.object({
+  incidentId: z.uuid(),
+  type: incidentTypeSchema,
+  point: latLngSchema,
+});
+export type DeliveryAlert = z.infer<typeof deliveryAlertSchema>;
+
 export const deliveryStateSchema = z.object({
   sessionId: z.uuid(),
   // Sube con cada cambio publicado. La respuesta HTTP y el socket pueden llegar en desorden: el
@@ -45,6 +54,8 @@ export const deliveryStateSchema = z.object({
   progressM: z.number().nonnegative(),
   speedMultiplier: speedMultiplierSchema,
   summary: deliverySummarySchema.nullable(),
+  // Aviso del tramo en curso. Null si no hay, o si ya se pidió recalcular.
+  alert: deliveryAlertSchema.nullable(),
 });
 export type DeliveryState = z.infer<typeof deliveryStateSchema>;
 

@@ -1,4 +1,4 @@
-import { PARAMS, type RouteKind } from '@urbansafe/shared';
+import { INCIDENT_CATALOG, PARAMS, type RouteKind } from '@urbansafe/shared';
 import type { ReactNode } from 'react';
 import { formatDistance, formatDuration, RouteOptions, ROUTE_KIND_LABELS } from '../../routing';
 import { chosenOption, orderDistances, remaining } from '../delivery-state';
@@ -34,7 +34,7 @@ function Actions({ children }: { children: ReactNode }) {
 }
 
 export function DeliverySheet({ session, picked, onPick }: Props) {
-  const { state, pending, booting, accept, choose, setSpeed, next, retry } = session;
+  const { state, alert, pending, booting, accept, choose, setSpeed, next, retry, recalculate } = session;
 
   if (booting && !state) {
     return (
@@ -114,6 +114,14 @@ export function DeliverySheet({ session, picked, onPick }: Props) {
             </p>
           )}
         </div>
+        {alert && (
+          <div className="alert-banner" role="status">
+            <p>{INCIDENT_CATALOG[alert.type].label} adelante en la ruta</p>
+            <button type="button" className="button primary" disabled={pending} onClick={recalculate}>
+              {pending ? 'Calculando…' : 'Recalcular ruta'}
+            </button>
+          </div>
+        )}
         <SpeedControl value={state.speedMultiplier} onChange={setSpeed} />
       </div>
     );
