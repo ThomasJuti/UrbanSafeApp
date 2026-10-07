@@ -21,6 +21,7 @@ const server = await startServer({
   routing: { db: routingDb, concurrency: config.routing.concurrency, maxQueue: config.routing.maxQueue },
   backgroundJobs: true,
   trustProxy: config.trustProxy,
+  newsIngestion: config.newsIngestion,
 });
 console.log(`API escuchando en http://localhost:${server.port}`);
 
