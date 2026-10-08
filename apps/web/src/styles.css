@@ -88,6 +88,35 @@ a.button:focus-visible {
   transform: scale(0.62);
 }
 
+.mode-switch {
+  position: absolute;
+  top: calc(24px + env(safe-area-inset-top));
+  left: calc(92px + env(safe-area-inset-left));
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: oklch(0.25 0.04 260 / 0.92);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.mode-switch a {
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mode-switch a[aria-current='page'] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
 .here {
   width: 16px;
   height: 16px;
@@ -169,10 +198,40 @@ a.button:focus-visible {
   font-size: 13px;
 }
 
+.incident-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .incident-popup strong {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.incident-popup .origin-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.incident-popup .origin-badge.news {
+  background: oklch(0.7 0.19 45 / 0.18);
+  color: var(--primary);
+}
+
+.incident-popup .origin-badge.report {
+  background: oklch(1 0 0 / 8%);
+  color: var(--foreground);
+}
+
+.incident-popup .incident-place {
+  color: var(--foreground);
+  font-weight: 500;
 }
 
 .incident-popup span {
@@ -368,8 +427,7 @@ a.button:focus-visible {
 }
 
 .hint {
-  top: 16px;
-  max-width: calc(100% - 188px);
+  top: calc(92px + env(safe-area-inset-top));
   pointer-events: none;
 }
 
@@ -380,7 +438,7 @@ a.button:focus-visible {
 }
 
 .toast.top {
-  top: 16px;
+  top: calc(92px + env(safe-area-inset-top));
   bottom: auto;
 }
 
@@ -408,8 +466,8 @@ a.button:focus-visible {
   left: 12px;
   z-index: 2;
   display: grid;
-  gap: 6px;
-  width: 200px;
+  gap: 8px;
+  width: 220px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -432,6 +490,41 @@ a.button:focus-visible {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
   font-size: 10px;
+}
+
+.incident-scale {
+  display: grid;
+  gap: 6px;
+}
+
+.incident-scale-key {
+  display: flex;
+  gap: 10px;
+}
+
+.incident-scale-key span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--foreground);
+}
+
+.incident-scale .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.incident-scale .dot.caution {
+  background: var(--caution);
+}
+
+.incident-scale .dot.mid {
+  background: var(--mid);
+}
+
+.incident-scale .dot.danger {
+  background: var(--danger);
 }
 
 .sheet {

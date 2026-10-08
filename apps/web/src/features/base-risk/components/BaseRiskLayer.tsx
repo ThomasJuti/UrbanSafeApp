@@ -1,5 +1,6 @@
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
+import { IncidentScale } from '../../incidents';
 import { useMap } from '../../../shared/map';
 import { theme } from '../../../shared/theme';
 import { fetchBaseRisk } from '../api';
@@ -63,16 +64,20 @@ export function BaseRiskLayer() {
     };
   }, [map]);
 
-  if (!period) return null;
   return (
     <div className="risk-legend">
-      <span>Riesgo histórico por localidad</span>
-      <div className="risk-legend-bar" style={{ background: `linear-gradient(to right, ${LOW_COLOR}, ${MID_COLOR}, ${HIGH_COLOR})` }} />
-      <div className="risk-legend-scale">
-        <span>Bajo</span>
-        <span>{period}</span>
-        <span>Alto</span>
-      </div>
+      <IncidentScale />
+      {period && (
+        <>
+          <span>Riesgo histórico por localidad</span>
+          <div className="risk-legend-bar" style={{ background: `linear-gradient(to right, ${LOW_COLOR}, ${MID_COLOR}, ${HIGH_COLOR})` }} />
+          <div className="risk-legend-scale">
+            <span>Bajo</span>
+            <span>{period}</span>
+            <span>Alto</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

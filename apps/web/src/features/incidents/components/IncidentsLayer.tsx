@@ -223,9 +223,15 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
 
   if (!selected) return null;
   const { incident, container } = selected;
+  const place = incident.location.kind === 'area' ? incident.location.name : null;
+  const fromNews = (incident.news?.length ?? 0) > 0;
   return createPortal(
     <div className="incident-popup">
-      <strong>{INCIDENT_CATALOG[incident.type].label}</strong>
+      <div className="incident-title">
+        <strong>{INCIDENT_CATALOG[incident.type].label}</strong>
+        <span className={`origin-badge ${fromNews ? 'news' : 'report'}`}>{fromNews ? 'Noticia' : 'Reporte'}</span>
+      </div>
+      {place && <span className="incident-place">{place}</span>}
       <span>{formatAgo(incident.occurredAt)}</span>
       <NewsCite news={incident.news ?? []} />
       {renderDetails?.(incident)}
