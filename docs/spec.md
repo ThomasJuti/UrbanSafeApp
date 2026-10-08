@@ -8,7 +8,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 
 - **Cimiento del repo.** Monorepo pnpm (`apps/api`, `apps/web`, `packages/shared`), TypeScript strict, ESLint con las reglas de arquitectura y Vitest. Proyecto de Supabase `UrbanSafe` (São Paulo); las migraciones se aplican con dbmate. La conexión verifica la CA de Supabase (`db/supabase-ca.crt`), en el pool del API y en dbmate (`sslmode=verify-full`).
 - **Modelo `Incidente` (sección 4, RN-01).** Esquema zod, catálogo de delitos y parámetros iniciales en `packages/shared`. Tablas `incidents` e `incident_sources` con geometría en SRID 4326, índice GiST y RLS activado sin políticas. Los datos de prueba están en `db/seeds` y usan el prefijo de id `00000000-0000-4000-8000-`.
-- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes de los últimos 7 días con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa.
+- **Mapa de incidentes (M8, solo la lectura; RN-12).** `GET /api/incidents?bbox=` devuelve los incidentes de los últimos 7 días con confianza de al menos 0,1 dentro de la caja visible, sin el campo `sources`. `/reportar` los dibuja en MapLibre, agrupados, y vuelve a pedirlos al mover el mapa. Si el navegador da la ubicación y cae en Bogotá, un punto azul marca dónde estás; el reporte se sigue eligiendo tocando el mapa.
 - **Reportes comunitarios, parte 1 (M3: apodo, reportar y tiempo real; RN-04; RN-09 para reportes de la comunidad).**
   - **Identidad.** El apodo y un `deviceId` se guardan en `localStorage`.
   - **Envío.** Se reporta tocando el mapa y eligiendo el tipo. `POST /api/reports` es idempotente por `clientId`.
@@ -97,6 +97,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Concurrencia.** Una sola corrida a la vez (bandera en el proceso y advisory lock de sesión), 4 artículos en paralelo hacia el LLM y el geocodificador, con timeouts y reintentos con backoff.
   - **A mano.** `pnpm ingest:news` hace una corrida y muestra el resumen; con `--dry-run` solo lee los feeds. `pnpm ingest:sample` exporta los últimos 50 artículos procesados para la revisión de §7.
   - **Sin claves.** Si falta `GEMINI_API_KEY` o `GOOGLE_GEOCODING_API_KEY`, el servidor avisa una vez y arranca sin ingesta.
+  - **Revisión manual (§7), leída el 2026-10-07.** En `docs/m1-muestra.md`, 46 de 50 artículos tienen tipo y ubicación correctos (92 %). Fallan cuatro: el atraco al supermercado del sur quedó como `other`, el ataque de un hijo a sus padres en Bogotá quedó como `other`, la riña sin lugar quedó como `other` siendo un homicidio, y la nota del apagado remoto de una moto quedó como hurto de moto. Los 7 incidentes guardados coinciden con el título en tipo y lugar, y ninguno es duplicado de otro. El intento de robo en el túnel de la Calle 26 con Boyacá queda como hurto de bicicleta. Tres notas de esa misma vía ("Calle 26", "Avenida 26", "Ciclorruta de la 26") se descartaron por no geocodificar y no se reprocesan solas. La violencia intrafamiliar en Kennedy tenía tipo y lugar bien y se descartó como irrelevante.
 - **Alertas en ruta (M6, RN-08).**
   - **Cuándo.** Mientras la sesión va en camino, un incidente visible avisa si cae a 300 m de la ruta y dentro del próximo kilómetro, con `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h. Lo ya recorrido no avisa. Cada incidente avisa una sola vez por tramo.
   - **Área.** Un barrio, una vía o una localidad usa su geometría: si el próximo kilómetro entra en esa zona, avisa.
@@ -106,8 +107,6 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Presupuestos.** En `load:demo`, la alerta llegó a los 4,8 s (no cumple 2 s): incluye la espera del insert del reporte. Recalcular usa el mismo cálculo que las 3 rutas, que en ráfaga tampoco entra en 1 s.
 
 ### Siguiente
-
-- **Revisión manual de la ingesta (M1, §7).** La primera corrida con claves ya guardó 7 incidentes y descartó 137 (131 sin delito en el texto, 6 sin ubicación útil). Hay una muestra de los últimos 50 artículos procesados en `docs/m1-muestra.md`, con la columna de tipo y ubicación correcta vacía: falta la lectura humana. No se anota el 80 %. Tres de las descartadas solo decían la 26 ("Calle 26", "Avenida 26", "Ciclorruta de la 26"); con la regla nueva se guardarían, pero esas filas ya quedaron descartadas y no se reprocesan solas.
 
 - **Valor de la ruta segura.** La medición con α = 5 no llega al 70 %. Se volvió a medir el 2026-10-06 con α 20 y α 50, 30 pedidos cada uno: ninguno cumple (0 %). Con α 20 la media es 4 % menos exposición y 1 % de tiempo extra; con α 50, 3 % y 3 %. α se queda en 5. El riesgo de los tramos es bajo y parecido, y subir α no aparta la ruta segura de la rápida.
 
