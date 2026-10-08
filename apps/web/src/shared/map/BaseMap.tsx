@@ -21,6 +21,7 @@ export function BaseMap({ children }: { children?: ReactNode }) {
       style: STYLE_URL,
       center: BOGOTA_CENTER,
       zoom: INITIAL_ZOOM,
+      attributionControl: false,
     });
     instance.addControl(new NavigationControl({ showCompass: false }), 'top-right');
     instance.once('load', () => setMap(instance));
