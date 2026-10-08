@@ -1,6 +1,7 @@
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { useMap } from '../../../shared/map';
+import { theme } from '../../../shared/theme';
 import { fetchBaseRisk } from '../api';
 import { toFeatureCollection } from '../to-geojson';
 
@@ -8,9 +9,9 @@ const SOURCE_ID = 'base-risk';
 const FILL_LAYER = 'base-risk-fill';
 const OUTLINE_LAYER = 'base-risk-outline';
 
-const LOW_COLOR = '#fde68a';
-const MID_COLOR = '#f97316';
-const HIGH_COLOR = '#b91c1c';
+const LOW_COLOR = theme.caution;
+const MID_COLOR = theme.mid;
+const HIGH_COLOR = theme.danger;
 
 export function BaseRiskLayer() {
   const map = useMap();
@@ -38,7 +39,7 @@ export function BaseRiskLayer() {
         id: OUTLINE_LAYER,
         type: 'line',
         source: SOURCE_ID,
-        paint: { 'line-color': '#9a3412', 'line-opacity': 0.3, 'line-width': 0.75 },
+        paint: { 'line-color': theme.danger, 'line-opacity': 0.35, 'line-width': 0.75 },
       },
       firstLabel,
     );

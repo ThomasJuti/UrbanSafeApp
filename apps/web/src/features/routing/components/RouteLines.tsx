@@ -3,6 +3,7 @@ import type { FeatureCollection, LineString } from 'geojson';
 import type { ExpressionSpecification, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { useMap } from '../../../shared/map';
+import { theme } from '../../../shared/theme';
 
 const SOURCE_ID = 'routes';
 const LINE_LAYER = 'routes-line';
@@ -57,7 +58,7 @@ export function RouteLines({ routes, selected, onSelect, belowLayers, paddingBot
         type: 'line',
         source: SOURCE_ID,
         layout: { 'line-join': 'round', 'line-cap': 'round', 'line-sort-key': sortKey },
-        paint: { 'line-color': '#ffffff', 'line-width': 9 },
+        paint: { 'line-color': theme.background, 'line-width': 9 },
       },
       before,
     );
@@ -67,7 +68,7 @@ export function RouteLines({ routes, selected, onSelect, belowLayers, paddingBot
         type: 'line',
         source: SOURCE_ID,
         layout: { 'line-join': 'round', 'line-cap': 'round', 'line-sort-key': sortKey },
-        paint: { 'line-color': ['case', ['get', 'selected'], '#2563eb', '#94a3b8'], 'line-width': 5 },
+        paint: { 'line-color': ['case', ['get', 'selected'], theme.primary, theme.muted], 'line-width': 5 },
       },
       before,
     );

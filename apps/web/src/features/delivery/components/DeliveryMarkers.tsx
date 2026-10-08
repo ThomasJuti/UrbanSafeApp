@@ -2,6 +2,7 @@ import type { DeliveryState, LatLng } from '@urbansafe/shared';
 import { LngLatBounds, Marker } from 'maplibre-gl';
 import { useEffect } from 'react';
 import { useMap } from '../../../shared/map';
+import { theme } from '../../../shared/theme';
 
 const ROUTE_PADDING_PX = 60;
 
@@ -16,7 +17,7 @@ function useAlertMarker(point: { lng: number; lat: number } | null) {
   const lng = point?.lng;
   useEffect(() => {
     if (lat === undefined || lng === undefined) return;
-    const marker = new Marker({ color: '#c2410c' }).setLngLat([lng, lat]).addTo(map);
+    const marker = new Marker({ color: theme.danger }).setLngLat([lng, lat]).addTo(map);
     return () => {
       marker.remove();
     };
@@ -35,9 +36,9 @@ function usePointMarker(color: string, point: LatLng) {
 
 export function DeliveryMarkers({ state, alertPoint, paddingBottomPx }: Props & { alertPoint?: { lng: number; lat: number } | null }) {
   const map = useMap();
-  usePointMarker('#2563eb', state.position);
-  usePointMarker('#15803d', state.order.pickup);
-  usePointMarker('#b91c1c', state.order.dropoff);
+  usePointMarker(theme.primary, state.position);
+  usePointMarker(theme.safe, state.order.pickup);
+  usePointMarker(theme.danger, state.order.dropoff);
   useAlertMarker(alertPoint ?? null);
 
   // El encuadre de las rutas lo hace RouteLines. Aquí solo el pedido, antes de haber rutas.
