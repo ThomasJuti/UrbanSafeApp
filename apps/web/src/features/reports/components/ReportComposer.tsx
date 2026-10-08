@@ -2,8 +2,10 @@ import { INCIDENT_CATALOG, INCIDENT_TYPES, isInsideUrbanArea, type IncidentType,
 import { Marker, type MapMouseEvent } from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { useMap } from '../../../shared/map';
+import { theme } from '../../../shared/theme';
 import { submitReport } from '../api';
 import { resultMessage, type ResultMessage } from '../result-message';
+import { INCIDENT_HINTS, IncidentTypeIcon } from './incident-types';
 
 const MESSAGE_VISIBLE_MS = 4000;
 const MARKER_CLEARANCE_PX = 56;
@@ -46,7 +48,7 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
 
   useEffect(() => {
     if (!point) return;
-    const marker = (markerRef.current ??= new Marker({ color: '#111827' }));
+    const marker = (markerRef.current ??= new Marker({ color: theme.primary }));
     marker.setLngLat([point.lng, point.lat]).addTo(map);
 
     const sheetTop = sheetRef.current?.getBoundingClientRect().top;
@@ -86,9 +88,9 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
       {!draft && <div className="hint">Toca el mapa donde pasó para reportarlo</div>}
 
       {draft && (
-        <div ref={sheetRef} className="sheet" role="dialog" aria-label="Nuevo reporte">
+        <div ref={sheetRef} className="sheet report-sheet" role="dialog" aria-label="Nuevo reporte">
           <h2>¿Qué pasó aquí?</h2>
-          <div className="type-grid">
+          <div className="type-list">
             {INCIDENT_TYPES.map((type) => (
               <button
                 key={type}
@@ -97,7 +99,9 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
                 aria-pressed={draft.type === type}
                 onClick={() => setDraft({ ...draft, type, clientId: crypto.randomUUID() })}
               >
-                {INCIDENT_CATALOG[type].label}
+                <IncidentTypeIcon type={type} />
+                <span className="type-label">{INCIDENT_CATALOG[type].label}</span>
+                <span className="type-hint">{INCIDENT_HINTS[type]}</span>
               </button>
             ))}
           </div>

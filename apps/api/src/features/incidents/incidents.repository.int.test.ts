@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
@@ -77,6 +78,46 @@ describe('listVisibleInBbox', () => {
       expect(incident?.location).toMatchObject({ kind: 'area', level: 'neighborhood', name: 'Barrio de prueba' });
       expect(incident?.location.point.lat).toBeGreaterThan(0.002);
       expect(incident?.location.point.lat).toBeLessThan(0.008);
+    });
+  });
+
+  it('adjunta el titular y el enlace de la noticia, no el dispositivo de quien reportó', async () => {
+    await withRollback(db, async (trx) => {
+      const { id } = await insertPoint(trx, { lng: 0.005, lat: 0.005, confidence: 0.7 });
+      const url = `https://example.com/urbansafe/${randomUUID()}`;
+      await trx
+        .insertInto('news_articles')
+        .values({
+          url,
+          normalized_title: `nota ${randomUUID()}`,
+          media_key: `medio-${randomUUID()}`,
+          media_name: 'El Tiempo',
+          title: 'Atraco en Chapinero',
+          summary: '',
+          feed: 'test',
+          published_at: new Date(),
+          status: 'incident',
+          incident_id: id,
+        })
+        .execute();
+      await trx.insertInto('incident_sources').values({ incident_id: id, kind: 'community', ref: 'device-secreto' }).execute();
+
+      const incident = (await listVisibleInBbox(trx, BBOX, 100)).find((item) => item.id === id);
+
+      expect(incident?.news).toEqual([{ title: 'Atraco en Chapinero', media: 'El Tiempo', url }]);
+      expect(JSON.stringify(incident)).not.toContain('device-secreto');
+    });
+  });
+
+  it('si no hay artículo, usa la URL de la fuente de noticia', async () => {
+    await withRollback(db, async (trx) => {
+      const { id } = await insertPoint(trx, { lng: 0.005, lat: 0.005, confidence: 0.7 });
+      const url = `https://example.com/urbansafe/${randomUUID()}`;
+      await trx.insertInto('incident_sources').values({ incident_id: id, kind: 'news', ref: url }).execute();
+
+      const incident = (await listVisibleInBbox(trx, BBOX, 100)).find((item) => item.id === id);
+
+      expect(incident?.news).toEqual([{ title: null, media: null, url }]);
     });
   });
 });

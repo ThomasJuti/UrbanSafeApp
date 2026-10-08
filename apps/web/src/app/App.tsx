@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router';
 import { DeliveryPage } from '../pages/DeliveryPage';
 import { ReportPage } from '../pages/ReportPage';
+import { BrandMark } from '../shared/BrandMark';
 
 const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/reportar" replace /> },
@@ -9,5 +10,10 @@ const router = createBrowserRouter([
 ]);
 
 export function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <RouterProvider router={router} />
+      <BrandMark />
+    </>
+  );
 }
