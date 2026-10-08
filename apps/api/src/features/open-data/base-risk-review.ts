@@ -15,7 +15,13 @@ async function latestImportAt(db: Db): Promise<Date | null> {
   return rows[0]?.imported_at ?? null;
 }
 
-// Al arrancar, y otra vez cada 30 días, si la importación guardada ya cumplió ese plazo.
+// setInterval guarda el plazo en un entero de 32 bits con signo. 30 días se pasan de ese tope
+// (~24,8 días) y Node lo convierte en 1 ms: la consulta pegaba a la base sin parar y el pool se
+// quedaba sin conexiones, así que un reporte no terminaba. Se mira una vez al día; la función
+// decide si la importación ya cumplió el mes.
+export const REVIEW_CHECK_MS = 24 * 60 * 60 * 1000;
+
+// Al arrancar, y otra vez cada día, si la importación guardada ya cumplió 30 días.
 export function startBaseRiskReview(db: Db, log: (message: string) => void = console.log) {
   let current: Promise<unknown> = Promise.resolve();
 
@@ -27,7 +33,7 @@ export function startBaseRiskReview(db: Db, log: (message: string) => void = con
   };
 
   tick();
-  const timer = setInterval(tick, PARAMS.baseRiskReviewMs);
+  const timer = setInterval(tick, REVIEW_CHECK_MS);
   return async () => {
     clearInterval(timer);
     await current;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseRiskIsStale } from './base-risk-review';
+import { REVIEW_CHECK_MS, baseRiskIsStale } from './base-risk-review';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -10,5 +10,10 @@ describe('revisión del riesgo base (M2)', () => {
     expect(baseRiskIsStale(null, now)).toBe(true);
     expect(baseRiskIsStale(new Date(now - 30 * DAY), now)).toBe(true);
     expect(baseRiskIsStale(new Date(now - 29 * DAY), now)).toBe(false);
+  });
+
+  it('mira una vez al día: 30 días no caben en setInterval y Node los vuelve 1 ms', () => {
+    expect(REVIEW_CHECK_MS).toBe(DAY);
+    expect(REVIEW_CHECK_MS).toBeLessThanOrEqual(2_147_483_647);
   });
 });
