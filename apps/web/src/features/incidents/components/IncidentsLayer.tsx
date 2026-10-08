@@ -1,8 +1,9 @@
-import { INCIDENT_CATALOG, type Bbox, type MapIncident } from '@urbansafe/shared';
+import { INCIDENT_CATALOG, type Bbox, type MapIncident, type NewsCitation } from '@urbansafe/shared';
 import { Popup, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl';
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMap } from '../../../shared/map';
+import { theme } from '../../../shared/theme';
 import { getSocket } from '../../../shared/socket';
 import { fetchIncidents } from '../api';
 import { createIncidentStore } from '../incident-store';
@@ -28,6 +29,43 @@ function formatAgo(iso: string): string {
 
 type Selected = { incident: MapIncident; container: HTMLElement };
 
+function hostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function NewsCite({ news }: { news: NewsCitation[] }) {
+  const [main, ...rest] = news;
+  if (!main) return null;
+  const outlet = main.media ?? hostname(main.url);
+
+  return (
+    <div className="news-cite">
+      {outlet && <span>{outlet}</span>}
+      {main.title && <p className="news-title">{main.title}</p>}
+      <a className="button" href={main.url} target="_blank" rel="noopener noreferrer">
+        Ver noticia
+      </a>
+      {rest.length > 0 && (
+        <p className="news-more">
+          También en{' '}
+          {rest.map((item, index) => (
+            <span key={item.url}>
+              {index > 0 && ', '}
+              <a href={item.url} target="_blank" rel="noopener noreferrer">
+                {item.media ?? hostname(item.url) ?? 'otro medio'}
+              </a>
+            </span>
+          ))}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: MapIncident) => ReactNode) | undefined }) {
   const map = useMap();
   const [selected, setSelected] = useState<Selected | null>(null);
@@ -46,7 +84,7 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
       source: SOURCE_ID,
       filter: ['has', 'point_count'],
       paint: {
-        'circle-color': '#b91c1c',
+        'circle-color': theme.danger,
         'circle-opacity': 0.8,
         'circle-radius': ['step', ['get', 'point_count'], 14, 10, 18, 50, 24],
       },
@@ -57,7 +95,7 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
       source: SOURCE_ID,
       filter: ['has', 'point_count'],
       layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 },
-      paint: { 'text-color': '#ffffff' },
+      paint: { 'text-color': theme.foreground },
     });
     map.addLayer({
       id: POINTS_LAYER,
@@ -65,10 +103,10 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
       source: SOURCE_ID,
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-color': ['step', ['get', 'severity'], '#f59e0b', 3, '#f97316', 5, '#dc2626'],
+        'circle-color': ['step', ['get', 'severity'], theme.caution, 3, theme.mid, 5, theme.danger],
         'circle-radius': 8,
         'circle-opacity': ['interpolate', ['linear'], ['get', 'confidence'], 0.1, 0.35, 1, 1],
-        'circle-stroke-color': '#ffffff',
+        'circle-stroke-color': theme.background,
         'circle-stroke-width': 1.5,
       },
     });
@@ -126,7 +164,7 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
       closePopup();
 
       const container = document.createElement('div');
-      const opened = new Popup({ offset: 12, maxWidth: '280px' })
+      const opened = new Popup({ offset: 12, maxWidth: '300px' })
         .setLngLat([incident.location.point.lng, incident.location.point.lat])
         .setDOMContent(container)
         .addTo(map);
@@ -189,6 +227,7 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
     <div className="incident-popup">
       <strong>{INCIDENT_CATALOG[incident.type].label}</strong>
       <span>{formatAgo(incident.occurredAt)}</span>
+      <NewsCite news={incident.news ?? []} />
       {renderDetails?.(incident)}
     </div>,
     container,
