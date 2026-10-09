@@ -47,8 +47,8 @@ async function measure(safest: number) {
         continue;
       }
       const now = new Date();
-      let first: ReturnType<typeof pair> = null;
-      let second: ReturnType<typeof pair> = null;
+      let first: ReturnType<typeof pair>;
+      let second: ReturnType<typeof pair>;
       try {
         first = pair(await routing.planRoutes({ from: generated.start, to: generated.order.pickup }, now));
         second = pair(await routing.planRoutes({ from: generated.order.pickup, to: generated.order.dropoff }, now));
