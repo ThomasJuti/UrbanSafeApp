@@ -661,6 +661,26 @@ a.button:focus-visible {
   gap: 8px;
 }
 
+.riding-controls {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.riding-controls .speed-options {
+  flex: 1;
+}
+
+.voice-toggle {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.voice-toggle[aria-pressed='true'] {
+  border-color: var(--primary);
+  background: oklch(0.7 0.19 45 / 0.28);
+}
+
 .speed-option {
   flex: 1;
   min-height: 40px;

@@ -10,6 +10,7 @@ type Props = {
   session: DeliverySession;
   picked: RouteKind;
   onPick: (kind: RouteKind) => void;
+  voice: { enabled: boolean; toggle: () => void };
   // La parada segura más cercana a la posición actual; null si no hay alerta o no hay puntos.
   safePlace: NearestSafePlace | null;
 };
@@ -32,11 +33,19 @@ function SpeedControl({ value, onChange }: { value: number; onChange: (multiplie
   );
 }
 
+function VoiceToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="button voice-toggle" aria-pressed={enabled} onClick={onToggle}>
+      Voz: {enabled ? 'sí' : 'no'}
+    </button>
+  );
+}
+
 function Actions({ children }: { children: ReactNode }) {
   return <div className="sheet-actions">{children}</div>;
 }
 
-export function DeliverySheet({ session, picked, onPick, safePlace }: Props) {
+export function DeliverySheet({ session, picked, onPick, voice, safePlace }: Props) {
   const { state, alert, pending, booting, accept, choose, setSpeed, next, retry, recalculate } = session;
 
   if (booting && !state) {
@@ -131,7 +140,10 @@ export function DeliverySheet({ session, picked, onPick, safePlace }: Props) {
             </button>
           </div>
         )}
-        <SpeedControl value={state.speedMultiplier} onChange={setSpeed} />
+        <div className="riding-controls">
+          <SpeedControl value={state.speedMultiplier} onChange={setSpeed} />
+          <VoiceToggle enabled={voice.enabled} onToggle={voice.toggle} />
+        </div>
       </div>
     );
   }
