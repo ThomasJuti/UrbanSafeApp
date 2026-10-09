@@ -6,6 +6,8 @@ import { useMap } from '../../../shared/map';
 import { theme } from '../../../shared/theme';
 
 const SOURCE_ID = 'routes';
+const SEGMENTS_SOURCE_ID = 'routes-segments';
+const SEGMENTS_LAYER = 'routes-selected-segments';
 const LINE_LAYER = 'routes-line';
 const CASING_LAYER = 'routes-casing';
 const ROUTE_PADDING_PX = 60;
@@ -31,6 +33,19 @@ function toLines(routes: RouteOption[], selected: RouteKind | null): FeatureColl
   };
 }
 
+// M5: la ruta elegida se pinta por tramos según su nivel de riesgo, encima de la línea base.
+function toSegments(routes: RouteOption[], selected: RouteKind | null): FeatureCollection<LineString> {
+  const route = routes.find((candidate) => candidate.kind === selected);
+  return {
+    type: 'FeatureCollection',
+    features: (route?.segments ?? []).map((segment) => ({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: segment.path },
+      properties: { level: segment.level },
+    })),
+  };
+}
+
 // Llave del encuadre: el mismo conjunto de rutas no vuelve a mover la cámara aunque llegue en un
 // estado nuevo (cambio de velocidad, por ejemplo).
 function boundsKey(routes: RouteOption[]): string | null {
@@ -51,6 +66,7 @@ export function RouteLines({ routes, selected, onSelect, belowLayers, paddingBot
   useEffect(() => {
     const before = belowLayers?.find((id) => map.getLayer(id));
     map.addSource(SOURCE_ID, { type: 'geojson', data: toLines([], null) });
+    map.addSource(SEGMENTS_SOURCE_ID, { type: 'geojson', data: toSegments([], null) });
     const sortKey: ExpressionSpecification = ['case', ['get', 'selected'], 1, 0];
     map.addLayer(
       {
@@ -72,6 +88,19 @@ export function RouteLines({ routes, selected, onSelect, belowLayers, paddingBot
       },
       before,
     );
+    map.addLayer(
+      {
+        id: SEGMENTS_LAYER,
+        type: 'line',
+        source: SEGMENTS_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': ['match', ['get', 'level'], 'high', theme.danger, 'medium', theme.mid, theme.caution],
+          'line-width': 5,
+        },
+      },
+      before,
+    );
 
     const onLineClick = (event: MapLayerMouseEvent) => {
       const kind = event.features?.[0]?.properties['kind'];
@@ -90,14 +119,17 @@ export function RouteLines({ routes, selected, onSelect, belowLayers, paddingBot
       map.off('click', LINE_LAYER, onLineClick);
       map.off('mouseenter', LINE_LAYER, setPointer);
       map.off('mouseleave', LINE_LAYER, clearPointer);
+      map.removeLayer(SEGMENTS_LAYER);
       map.removeLayer(LINE_LAYER);
       map.removeLayer(CASING_LAYER);
+      map.removeSource(SEGMENTS_SOURCE_ID);
       map.removeSource(SOURCE_ID);
     };
   }, [map, belowLayers]);
 
   useEffect(() => {
     map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(toLines(routes, selected));
+    map.getSource<GeoJSONSource>(SEGMENTS_SOURCE_ID)?.setData(toSegments(routes, selected));
   }, [map, routes, selected]);
 
   const fitKey = boundsKey(routes);
