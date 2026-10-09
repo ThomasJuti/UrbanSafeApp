@@ -374,6 +374,38 @@ a.button:focus-visible {
   margin-top: 4px;
 }
 
+.report-guide {
+  display: grid;
+  gap: 14px;
+}
+
+.report-guide h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.report-guide ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.report-guide strong {
+  font-weight: 600;
+}
+
+.report-guide p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .hint,
 .toast,
 .sheet {
@@ -397,9 +429,35 @@ a.button:focus-visible {
   text-align: center;
 }
 
-.hint {
-  top: calc(92px + env(safe-area-inset-top));
+/* La fila va arriba, a la altura del logo; el ancho máximo deja libre esa esquina. Cada píldora
+   toma el aspecto de .hint, pero la fila es la que se posiciona. */
+.hint-row {
+  position: absolute;
+  top: calc(22px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  max-width: calc(100% - 168px);
+  transform: translateX(-50%);
   pointer-events: none;
+}
+
+.hint-row .hint {
+  position: static;
+  max-width: none;
+  transform: none;
+}
+
+/* El texto deja pasar los toques al mapa; solo el botón de ayuda los recibe. */
+.hint-help {
+  flex: none;
+  min-width: 42px;
+  color: var(--foreground);
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .toast {

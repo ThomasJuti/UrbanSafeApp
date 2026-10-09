@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useMap } from '../../../shared/map';
 import { theme } from '../../../shared/theme';
 import { submitReport } from '../api';
+import { loadGuideSeen, saveGuideSeen } from '../guide-storage';
 import { resultMessage, type ResultMessage } from '../result-message';
 import { INCIDENT_HINTS, IncidentTypeIcon } from './incident-types';
+import { ReportGuide } from './ReportGuide';
 
 const MESSAGE_VISIBLE_MS = 4000;
 const MARKER_CLEARANCE_PX = 56;
@@ -19,6 +21,7 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<ResultMessage | null>(null);
+  const [guideOpen, setGuideOpen] = useState(() => !loadGuideSeen());
   const markerRef = useRef<Marker | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
 
@@ -85,7 +88,23 @@ export function ReportComposer({ reporter, ignoreLayers }: { reporter: Reporter;
 
   return (
     <>
-      {!draft && <div className="hint">Toca el mapa donde pasó para reportarlo</div>}
+      {!draft && (
+        <div className="hint-row">
+          <div className="hint">Toca el mapa para reportar un incidente</div>
+          <button type="button" className="hint hint-help" aria-label="Cómo funciona" onClick={() => setGuideOpen(true)}>
+            ?
+          </button>
+        </div>
+      )}
+
+      {guideOpen && (
+        <ReportGuide
+          onClose={() => {
+            saveGuideSeen();
+            setGuideOpen(false);
+          }}
+        />
+      )}
 
       {draft && (
         <div ref={sheetRef} className="sheet report-sheet" role="dialog" aria-label="Nuevo reporte">
