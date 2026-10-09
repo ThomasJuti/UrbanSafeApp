@@ -57,7 +57,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
     - **Recorrido.** De las sesiones que salieron, 24 entregaron a 20× y 2 se quedaron sin ruta.
 
 - **Simulador de pedidos, parte 1 (M7 en el servidor; F1 pasos 1 a 4, 6 y 7; RN-03).**
-  - **Pedido.** `POST /api/delivery/sessions` crea una sesión con un pedido al azar: recogida y entrega ajustadas al vértice del grafo más cercano. Si un punto queda a más de 200 m de una calle, se descarta. El primer pedido también sortea dónde arranca el domiciliario; los siguientes salen de donde terminó.
+  - **Pedido.** `POST /api/delivery/sessions` crea una sesión con un pedido al azar: recogida y entrega ajustadas al vértice del grafo más cercano. Si un punto queda a más de 200 m de una calle, o si el vértice cae fuera de las localidades de Bogotá, se descarta: el casco urbano es un rectángulo que también toma Soacha, Mosquera, Funza y Chía. El primer pedido también sortea dónde arranca el domiciliario; los siguientes salen de donde terminó.
   - **Tramos.** Aceptar calcula las 3 rutas del tramo hacia la recogida. Al llegar se calculan las del tramo hacia la entrega, con el riesgo de la hora en que empieza cada tramo. El cliente elige por tipo de ruta; nunca manda geometría.
   - **Movimiento.** Un único ticker a 1 Hz avanza todas las sesiones sobre la ruta elegida, a la velocidad promedio por el multiplicador.
   - **Fuente de posición.** La posición sale de una interfaz `PositionSource`; hoy la implementa la ruta simulada.
@@ -79,7 +79,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - **Endurecimiento del API (M3, M4, M5, M7).**
   - **Límite por IP.** Reportes, votos, `POST /api/routes` y los pedidos simulados (crear, aceptar, siguiente) tienen un límite por IP en ventana fija, además del límite por dispositivo de RN-04. Al pasarse responden 429 con `Retry-After`. La IP sale del socket; `X-Forwarded-For` solo se usa con `TRUST_PROXY=true`, y entonces se toma la última entrada, la que puso el proxy propio.
   - **Holgura.** Los límites son amplios porque en la demo unos 30 usuarios pueden compartir la IP de una misma red. `pnpm load:routes` hace unos 190 pedidos desde una sola IP: correrlo dos veces en 10 minutos topa el límite, salvo que se reinicie el API.
-  - **Reportes en el casco urbano.** El contrato rechaza reportes fuera del casco urbano, igual que las rutas. La web avisa en vez de abrir el reporte.
+  - **Reportes solo en Bogotá.** El contrato rechaza reportes fuera del casco urbano, igual que las rutas, y la web avisa en vez de abrir el reporte. Como el casco urbano es un rectángulo que también toma Soacha, Mosquera, Funza y Chía, `POST /api/reports` además exige que el punto caiga en una localidad de Bogotá: si no, responde 422 (`outside_bogota`) y la web avisa que el punto queda fuera de la ciudad. Es una consulta más antes de guardar.
   - **Cola del ruteo acotada.** Con `ROUTING_MAX_QUEUE` pedidos esperando, el siguiente responde 503 con `Retry-After` en vez de esperar sin fin. Aceptar un pedido en ese caso lo deja ofrecido y responde 503. El segundo tramo se reintenta solo cada 2 s, hasta 5 veces. La ráfaga de 30 de `pnpm load:routes` cabe en la cola de 30 y no recibe 503.
   - **Límite de sesiones.** Con 500 sesiones en memoria, crear otra descarta la más inactiva que no esté en camino; si todas están en camino, responde 503.
   - **Recálculo de riesgo sin acumulación.** A lo sumo corre un lote incremental y espera otro: lo que llega durante la corrida se suma al lote que espera.
@@ -105,10 +105,17 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Aviso.** `alert.raised` va solo a la sala privada de la sesión. En `/domiciliario` se muestra el tipo, un punto en el mapa y "Recalcular ruta".
   - **Recalcular.** `POST /api/delivery/sessions/:id/recalculate` solo vale en camino y con un aviso activo. Pausa, calcula las 3 rutas desde la posición actual hasta el destino del tramo y vuelve a la elección. La exposición del resumen suma lo ya recorrido y la ruta nueva; la rápida de referencia sigue siendo la del inicio del tramo.
   - **Presupuestos.** En `load:demo`, la alerta llegó a los 4,8 s (no cumple 2 s): incluye la espera del insert del reporte. Recalcular usa el mismo cálculo que las 3 rutas, que en ráfaga tampoco entra en 1 s.
+- **Zonas a evitar, explicación y puntos seguros (M5, M6, M8; RN-13).**
+  - **Zonas a evitar (RN-13).** `route_between` recibe los tramos a evitar y un recargo (migración `route_between_avoid_zones`). `queryRoutes` los arma en la misma consulta de las 3 rutas: incidentes que cumplen RN-13 en la caja de ruteo, tramos a menos de 150 m (punto) o que intersectan el área, recargo ×(1 + 10) solo en la segura. La caché de rutas incluye el recargo en su llave.
+  - **Explicación (M5).** Cada opción trae `segments` (islas de tramos del mismo nivel, calculadas en SQL) y `hotIncidents`. La tarjeta dice qué zona caliente esquiva y cuántos incidentes evita frente a la rápida; el mapa pinta la ruta elegida por nivel (amarillo, naranja, rojo).
+  - **Voz y vibración (M6).** La alerta se anuncia con `speechSynthesis` (es-CO) y `navigator.vibrate`, una vez por incidente. "Voz: sí/no" se guarda en `localStorage`. Sin soporte del navegador no falla.
+  - **Riesgo por calle (M8).** `GET /api/edge-risk?bbox=` devuelve el riesgo de la franja actual por tramo, con caja máxima de 0,1°, hasta 5 000 tramos, un minuto de caché y límite por IP. La capa aparece desde zoom 14 en `/reportar` y `/domiciliario`.
+  - **Puntos seguros (M6, M8).** `pnpm db:import-safe-places` reemplaza `safe_places` desde Overpass: 236 puntos el 2026-10-09 (224 de policía y 12 gasolineras 24 h). `GET /api/safe-places` con una hora de caché; ambos mapas los dibujan y la alerta muestra el más cercano.
+  - **Valor de la ruta segura, vuelto a medir (2026-10-09, `pnpm measure:safe-route`).** 27 pedidos con las dos rutas y 3 fallidos: **0 cumplen (0 %)**, exposición evitada media 1 %, tiempo extra medio 0 %. **No cumple.** Sin incidentes graves recientes en la base, la penalización no se activa y la segura sale igual a la rápida; RN-13 mueve la ruta solo cuando hay una zona a evitar sobre el camino (prueba de integración).
 
 ### Siguiente
 
-- **Valor de la ruta segura.** La medición con α = 5 no llega al 70 %. Se volvió a medir el 2026-10-06 con α 20 y α 50, 30 pedidos cada uno: ninguno cumple (0 %). Con α 20 la media es 4 % menos exposición y 1 % de tiempo extra; con α 50, 3 % y 3 %. α se queda en 5. El riesgo de los tramos es bajo y parecido, y subir α no aparta la ruta segura de la rápida.
+- **Valor de la ruta segura.** Con RN-13 también da 0 % (2026-10-09). La medición con α = 5 no llega al 70 %. Se volvió a medir el 2026-10-06 con α 20 y α 50, 30 pedidos cada uno: ninguno cumple (0 %). Con α 20 la media es 4 % menos exposición y 1 % de tiempo extra; con α 50, 3 % y 3 %. α se queda en 5. El riesgo de los tramos es bajo y parecido, y subir α no aparta la ruta segura de la rápida.
 
 ## 1. Visión
 
@@ -192,6 +199,8 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - Cada opción muestra el tiempo estimado, el tiempo extra frente a la más rápida, el nivel de riesgo y el número de incidentes cercanos a la ruta.
 - **Nivel de riesgo de una ruta:** promedio de `riesgo(tramo, hora)` ponderado por el tiempo de recorrido de cada tramo, clasificado como bajo, medio o alto según los umbrales de Parámetros iniciales.
 - **Incidentes cercanos a una ruta:** incidentes visibles (RN-12) dentro del radio de influencia de algún tramo de la ruta.
+- **Zonas a evitar (RN-13):** la ruta más segura penaliza fuerte los tramos cercanos a un incidente grave y reciente. La más rápida y la balanceada no lo hacen.
+- **Explicación de la ruta:** cada opción trae sus tramos agrupados por nivel de riesgo (`segments`, consecutivos del mismo nivel, que juntos cubren toda la ruta) y las zonas a evitar que toca (`hotIncidents`). La tarjeta dice qué esquiva frente a la más rápida y el mapa pinta la ruta elegida por nivel de riesgo.
 - Grafo de calles tomado de OpenStreetMap:
   - **Cobertura:** solo el casco urbano de Bogotá (ver Parámetros iniciales). El origen y el destino tienen que caer dentro.
   - **Vías incluidas:** las `highway` aptas para moto, de `motorway` a `living_street` más `service` y los enlaces (`*_link`).
@@ -205,6 +214,8 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - Alertar cuando aparezca un incidente nuevo sobre la ruta activa.
 - Un incidente es reciente si entró al sistema (`reportado_en`) en las últimas 6 h **y** ocurrió (`ocurrido_en`) en las últimas 24 h. Así las noticias, que se publican horas después del hecho, también pueden generar alertas.
 - Cada alerta ofrece **Recalcular ruta**, que calcula 3 opciones nuevas desde la posición actual hasta el destino del tramo en curso.
+- Cada alerta se anuncia por voz ("<tipo> reportado a <N> metros adelante", con la distancia redondeada a 50 m) y con vibración. La voz se puede apagar y la preferencia se recuerda en el dispositivo.
+- La alerta muestra la **parada segura más cercana** (CAI/policía o gasolinera 24 h) a la posición actual (M8).
 
 ### M7 — Simulador de pedidos (app del domiciliario)
 - Aplicación web que genera un pedido (punto de recogida y de entrega en Bogotá).
@@ -219,6 +230,8 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 ### M8 — Web de reportes (móvil)
 - Vista web móvil sin creación de cuenta; el usuario solo ingresa un apodo.
 - Muestra el mapa de la ciudad con los incidentes visibles (noticias y reportes comunitarios) ocurridos dentro de la ventana del mapa (ver Parámetros iniciales), y el riesgo base por localidad.
+- Con zoom cercano pinta el **riesgo por calle** de la franja actual (el de `riesgo(tramo, hora)`), debajo de las etiquetas. Pedirlo con una caja mayor al tope responde 400.
+- Muestra los **puntos seguros**: estaciones de policía/CAI y gasolineras abiertas 24 h, tomadas de OpenStreetMap con `pnpm db:import-safe-places`. Es información pública; también aparece en `/domiciliario`.
 - El usuario toca un punto del mapa, elige el tipo de incidente y lo envía.
 - El usuario toca un incidente existente para confirmarlo o negarlo (M3).
 - Nunca muestra la ruta ni la posición de ningún domiciliario (RN-03).
@@ -320,6 +333,11 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   - Solo cuentan incidentes con `hora_conocida`. Los incidentes sin hora sí cuentan para el riesgo reciente (RN-10).
   - El multiplicador se acota a [0,5; 2]. Si la localidad tiene menos de 10 incidentes con hora en la ventana, `m = 1`.
 - **RN-12 · Visibilidad.** Un incidente con confianza menor a 0,1 se oculta: no aparece en los mapas, no aporta riesgo y no genera alertas. Si vuelve a subir de 0,1 por nuevas confirmaciones, se muestra otra vez.
+- **RN-13 · Zonas a evitar.**
+  - Un incidente es **zona a evitar** si cumple todo esto: es visible (RN-12), su gravedad es 5, su confianza es al menos 0,4 (una noticia, o un reporte con al menos una confirmación), está dentro de la ventana de alertas (M6) y su ubicación no es una localidad.
+  - Un tramo es **cercano** si está a menos de 150 m del punto del incidente, o si intersecta el barrio o el corredor de la vía.
+  - En la ruta más segura, el costo de un tramo cercano se multiplica por `1 + penalización`. No es un bloqueo: si no hay otra salida, la ruta pasa.
+  - La rápida y la balanceada no llevan penalización. La penalización se suma a la de riesgo (RN-07).
 
 ### Parámetros iniciales
 
@@ -342,8 +360,11 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Franjas horarias (RN-11) | 4 franjas de 6 h, en hora de Bogotá (`America/Bogota`) | La franja no depende de la zona horaria del servidor |
 | Radio de alerta (M6) | 300 m alrededor de la ruta, hasta 1 km adelante | No alerta por tramos ya recorridos ni por incidentes lejanos |
 | Ventana de alertas (M6) | `reportado_en` en las últimas 6 h y `ocurrido_en` en las últimas 24 h | Los incidentes más antiguos solo influyen en el ruteo |
+| Zona a evitar (RN-13) | Gravedad 5 · confianza ≥ 0,4 · ventana de alertas · sin localidades · radio 150 m · penalización ×(1 + 10) solo en la ruta segura | Un atraco grave reciente aparta a la segura aunque el riesgo de los tramos sea bajo y parecido |
+| Riesgo por calle (M8) | Desde zoom 14 · caja de hasta 0,1° por lado · solo tramos con riesgo ≥ 0,05 · hasta 5 000 tramos · 1 min de caché | Una pantalla ancha a zoom 14 abarca ~0,06°; el tope evita pedir la ciudad entera |
+| Puntos seguros (M8) | Desde cualquier zoom, filtrables desde la leyenda · policía y gasolineras con `opening_hours=24/7` del casco urbano | Lugares con gente y luz donde parar |
 | Límite de reportes (RN-04) | 5 por usuario por hora | Frena el spam |
-| Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
+| Límite por IP (API) | Ventana de 10 min · reportes 100 · votos 300 · rutas 300 · crear pedido 60 · aceptar o siguiente pedido 300 · riesgo por calle 600 | Frena a quien cambia de dispositivo para saltarse RN-04, con holgura para ~30 usuarios detrás de una misma red |
 | Cola del ruteo (M5) | 4 cálculos simultáneos · hasta 30 en espera; el resto recibe 503 | Una ráfaga de la demo cabe; una avalancha no deja pedidos esperando sin fin |
 | Caché de rutas (M5) | 5 min · hasta 200 resultados · se invalida al recalcular el riesgo | Reintentos del mismo par de vértices no vuelven a correr Dijkstra |
 | Revisión del riesgo base (M2) | Cada 30 días, al arrancar y mientras el proceso sigue vivo | Solo con los trabajos de fondo |

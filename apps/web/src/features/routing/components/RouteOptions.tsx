@@ -1,4 +1,5 @@
 import type { RiskLevel, RouteKind, RouteOption } from '@urbansafe/shared';
+import { explainRoute } from '../explain-route';
 import { formatDistance, formatDuration, formatExtra } from '../format';
 
 export const ROUTE_KIND_LABELS: Record<RouteKind, string> = {
@@ -21,7 +22,8 @@ type Props = {
 };
 
 export function RouteOptions({ routes, selected, onSelect }: Props) {
-  const fastestS = routes.find((route) => route.kind === 'fastest')?.durationS ?? 0;
+  const fastest = routes.find((route) => route.kind === 'fastest');
+  const fastestS = fastest?.durationS ?? 0;
   return (
     <div className="route-options" role="radiogroup" aria-label="Opciones de ruta">
       {routes.map((route) => (
@@ -40,6 +42,11 @@ export function RouteOptions({ routes, selected, onSelect }: Props) {
           </span>
           <span className={`risk-badge ${route.riskLevel}`}>{RISK_LABELS[route.riskLevel]}</span>
           <span className="route-option-meta">{incidentsLabel(route.nearbyIncidentIds.length)}</span>
+          {explainRoute(route, fastest).map((line) => (
+            <span key={line} className="route-option-why">
+              {line}
+            </span>
+          ))}
         </button>
       ))}
     </div>

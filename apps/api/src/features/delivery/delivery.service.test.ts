@@ -21,6 +21,8 @@ function fakeRoutes({ from, to }: RouteRequest): RouteOption[] {
       [from.lng, from.lat],
       [to.lng, to.lat],
     ],
+    segments: [],
+    hotIncidents: [],
   }));
 }
 

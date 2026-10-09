@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import type { ClientEvents, CreateReportBody, DeliveryStateResponse, DomainEvents, ServerEvents } from '@urbansafe/shared';
+import {
+  REPORT_ERRORS,
+  type ClientEvents,
+  type CreateReportBody,
+  type DeliveryStateResponse,
+  type DomainEvents,
+  type ServerEvents,
+} from '@urbansafe/shared';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../shared/db';
 import { startServer } from './start-server';
 
-// Dentro del casco urbano (los reportes lo exigen) pero en zona rural, lejos de datos reales.
-const POINT = { lat: 4.4705, lng: -74.2195 };
+// Dentro de una localidad de Bogotá (los reportes lo exigen) pero en la zona rural de Usme, a más de
+// 2 km del incidente real más cercano.
+const POINT = { lat: 4.475, lng: -74.1 };
 const deviceId = randomUUID();
 // Con el ticker a 1 Hz, una posición llega antes de esto.
 const POSITION_WAIT_MS = 3000;
@@ -90,6 +98,24 @@ describe('servidor', () => {
     expect(response.status).toBe(201);
     expect(event.id).toBe(incident.id);
     console.log(`Reporte → evento en el socket: ${Math.round(event.at - sentAt)} ms`);
+  });
+
+  it('rechaza con 422 un reporte en un municipio vecino que cae dentro del casco urbano', async () => {
+    // Centro de Soacha.
+    const body: CreateReportBody = {
+      clientId: randomUUID(),
+      deviceId,
+      nickname: 'tester',
+      type: 'fight',
+      point: { lat: 4.5793, lng: -74.2168 },
+    };
+    const response = await fetch(url('/api/reports'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: REPORT_ERRORS.outsideBogota });
   });
 
   it('rechaza un reporte mal formado con 400', async () => {

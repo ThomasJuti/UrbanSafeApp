@@ -69,8 +69,8 @@ a.button:focus-visible {
   top: calc(16px + env(safe-area-inset-top));
   left: calc(16px + env(safe-area-inset-left));
   z-index: 5;
-  width: 64px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
   overflow: hidden;
   border: 2px solid oklch(1 0 0 / 14%);
   border-radius: 50%;
@@ -86,35 +86,6 @@ a.button:focus-visible {
   height: 100%;
   object-fit: contain;
   transform: scale(0.62);
-}
-
-.mode-switch {
-  position: absolute;
-  top: calc(24px + env(safe-area-inset-top));
-  left: calc(92px + env(safe-area-inset-left));
-  z-index: 5;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: oklch(0.25 0.04 260 / 0.92);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
-}
-
-.mode-switch a {
-  padding: 8px 14px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.mode-switch a[aria-current='page'] {
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 
 .here {
@@ -403,6 +374,38 @@ a.button:focus-visible {
   margin-top: 4px;
 }
 
+.report-guide {
+  display: grid;
+  gap: 14px;
+}
+
+.report-guide h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.report-guide ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.report-guide strong {
+  font-weight: 600;
+}
+
+.report-guide p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .hint,
 .toast,
 .sheet {
@@ -426,9 +429,35 @@ a.button:focus-visible {
   text-align: center;
 }
 
-.hint {
-  top: calc(92px + env(safe-area-inset-top));
+/* La fila va arriba, a la altura del logo; el ancho máximo deja libre esa esquina. Cada píldora
+   toma el aspecto de .hint, pero la fila es la que se posiciona. */
+.hint-row {
+  position: absolute;
+  top: calc(22px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  max-width: calc(100% - 168px);
+  transform: translateX(-50%);
   pointer-events: none;
+}
+
+.hint-row .hint {
+  position: static;
+  max-width: none;
+  transform: none;
+}
+
+/* El texto deja pasar los toques al mapa; solo el botón de ayuda los recibe. */
+.hint-help {
+  flex: none;
+  min-width: 42px;
+  color: var(--foreground);
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .toast {
@@ -466,9 +495,8 @@ a.button:focus-visible {
   left: 12px;
   z-index: 2;
   display: grid;
-  gap: 8px;
-  width: 220px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: oklch(0.25 0.04 260 / 0.92);
@@ -479,22 +507,19 @@ a.button:focus-visible {
   pointer-events: none;
 }
 
+/* Riesgo de la zona en una sola línea: Bajo ▬▬ Alto. */
+.risk-legend-zone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+}
+
 .risk-legend-bar {
+  display: inline-block;
+  width: 72px;
   height: 6px;
   border-radius: 999px;
-}
-
-.risk-legend-scale {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.incident-scale {
-  display: grid;
-  gap: 6px;
 }
 
 .incident-scale-key {
@@ -502,11 +527,26 @@ a.button:focus-visible {
   gap: 10px;
 }
 
-.incident-scale-key span {
+/* Cada entrada de la leyenda es un botón que apaga o enciende esa capa. La leyenda deja pasar los
+   toques al mapa; solo los botones los reciben. */
+.legend-toggle {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
   color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.legend-toggle[aria-pressed='false'] {
+  opacity: 0.4;
+  text-decoration: line-through;
 }
 
 .incident-scale .dot {
@@ -661,6 +701,26 @@ a.button:focus-visible {
   gap: 8px;
 }
 
+.riding-controls {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.riding-controls .speed-options {
+  flex: 1;
+}
+
+.voice-toggle {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.voice-toggle[aria-pressed='true'] {
+  border-color: var(--primary);
+  background: oklch(0.7 0.19 45 / 0.28);
+}
+
 .speed-option {
   flex: 1;
   min-height: 40px;
@@ -718,6 +778,12 @@ a.button:focus-visible {
   font-size: 12px;
 }
 
+.route-option-why {
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .risk-badge {
   padding: 2px 8px;
   border-radius: 999px;
@@ -754,6 +820,11 @@ a.button:focus-visible {
   border-radius: var(--radius);
   background: oklch(0.63 0.21 25 / 0.14);
   color: var(--foreground);
+}
+
+.alert-banner .safe-place-hint {
+  color: var(--muted-foreground);
+  font-size: 13px;
 }
 
 .alert-banner p {

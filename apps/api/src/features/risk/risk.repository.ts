@@ -1,10 +1,12 @@
-import { PARAMS } from '@urbansafe/shared';
+import { PARAMS, type Bbox, type EdgeRisk } from '@urbansafe/shared';
 import { sql } from 'kysely';
 import type { Db } from '../../shared/db';
 
 // Recalcular toda la ciudad toma unos segundos; el límite general del pool es más corto.
 const FULL_REFRESH_TIMEOUT_MS = 120_000;
 const MS_PER_SECOND = 1000;
+// ~2 m: a zoom 14 o más no se nota y recorta los vértices de las curvas.
+const EDGE_SIMPLIFY_DEG = 0.00002;
 
 async function withTimeout<T>(db: Db, timeoutMs: number, fn: (trx: Db) => Promise<T>): Promise<T> {
   return db.transaction().execute(async (trx) => {
@@ -61,4 +63,21 @@ export async function assignEdgeLocalities(db: Db): Promise<number> {
     const { rows } = await sql<{ updated: number }>`select assign_edge_localities() as updated`.execute(trx);
     return rows[0]?.updated ?? 0;
   });
+}
+
+// M8: riesgo por calle de la franja pedida, para pintarlo en el mapa. El prefiltro por caja usa
+// el índice GiST; los tramos casi sin riesgo se omiten porque no aportan color.
+export async function listEdgeRiskInBbox(db: Db, bbox: Bbox, band: number, limit: number): Promise<EdgeRisk[]> {
+  const { rows } = await sql<{ risk: number; geojson: string }>`
+    select risk[${band + 1}::integer] as risk, ST_AsGeoJSON(ST_Simplify(geom, ${EDGE_SIMPLIFY_DEG}), 6) as geojson
+    from road_edges
+    where geom && ST_MakeEnvelope(${bbox.minLng}, ${bbox.minLat}, ${bbox.maxLng}, ${bbox.maxLat}, 4326)
+      and risk[${band + 1}::integer] >= ${PARAMS.edgeRisk.minRisk}
+    limit ${limit}
+  `.execute(db);
+
+  return rows.map((row) => ({
+    risk: Math.min(1, row.risk),
+    path: (JSON.parse(row.geojson) as { coordinates: [number, number][] }).coordinates,
+  }));
 }

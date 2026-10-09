@@ -4,6 +4,7 @@ import {
   severityOf,
   type CastVoteBody,
   type CreateReportBody,
+  type LatLng,
   type ReportOutcome,
   type VoteOutcome,
 } from '@urbansafe/shared';
@@ -15,6 +16,18 @@ type ReportRow = { r_outcome: ReportOutcome | 'rate_limited'; r_incident_id: str
 export type StoredReport =
   | { kind: 'accepted'; outcome: ReportOutcome; incidentId: string; replayed: boolean }
   | { kind: 'rate_limited' };
+
+// El casco urbano es un rectángulo que también toma municipios vecinos (Soacha, Mosquera, Chía…):
+// un reporte solo vale si el punto cae en una localidad de Bogotá.
+export async function isInsideBogota(db: Db, point: LatLng): Promise<boolean> {
+  const { rows } = await sql<{ inside: boolean }>`
+    select exists (
+      select 1 from locality_base_risk l
+      where ST_Intersects(l.geom, ST_SetSRID(ST_MakePoint(${point.lng}::float8, ${point.lat}::float8), 4326))
+    ) as inside
+  `.execute(db);
+  return rows[0]?.inside ?? false;
+}
 
 export async function storeCommunityReport(db: Db, report: CreateReportBody): Promise<StoredReport> {
   const { confirm, max } = PARAMS.confidenceAdjustments;

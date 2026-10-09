@@ -9,6 +9,12 @@ describe('mensaje tras reportar', () => {
     expect(message.text).toContain(String(PARAMS.reportRateLimit.max));
   });
 
+  it('avisa que el punto queda fuera de Bogotá', () => {
+    const message = resultMessage({ kind: 'outside_bogota' });
+    expect(message.tone).toBe('warning');
+    expect(message.text).toMatch(/fuera de Bogotá/);
+  });
+
   it('distingue un reporte nuevo de uno que sumó a un incidente existente (RN-09)', () => {
     expect(resultMessage({ kind: 'accepted', outcome: 'created' }).text).toMatch(/enviado/);
     expect(resultMessage({ kind: 'accepted', outcome: 'confirmed' }).text).toMatch(/confirmación/);

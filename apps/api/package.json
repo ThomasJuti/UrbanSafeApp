@@ -12,6 +12,7 @@
     "db:seed": "tsx --env-file-if-exists=../../.env src/app/run-seeds.ts",
     "db:import-graph": "tsx --env-file-if-exists=../../.env src/app/import-road-graph.ts",
     "db:import-base-risk": "tsx --env-file-if-exists=../../.env src/app/import-base-risk.ts",
+    "db:import-safe-places": "tsx --env-file-if-exists=../../.env src/app/import-safe-places.ts",
     "load:routes": "tsx src/app/load-test-routes.ts",
     "load:delivery": "tsx src/app/load-test-delivery.ts",
     "load:demo": "tsx src/app/load-test-demo.ts",

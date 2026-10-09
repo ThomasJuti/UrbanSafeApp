@@ -6,6 +6,8 @@ import { snapToRoads } from './delivery.repository';
 // Usa el grafo real de Bogotá: requiere haber corrido `pnpm db:import-graph` en la base de pruebas.
 const chapinero = { lat: 4.6486, lng: -74.0628 };
 const ocean = { lat: -30, lng: -30 };
+// Centro de Soacha: tiene calles en el grafo, pero no es Bogotá.
+const soacha = { lat: 4.5793, lng: -74.2168 };
 const MAX_SNAP_M = 200;
 
 let db: Db;
@@ -27,5 +29,12 @@ describe('snapToRoads (M7)', () => {
     expect(snapped).not.toBeNull();
     expect(haversineM([chapinero.lng, chapinero.lat], [snapped!.lng, snapped!.lat])).toBeLessThan(MAX_SNAP_M);
     expect(none).toBeNull();
+  });
+
+  it('descarta los puntos con calle que caen fuera de las localidades de Bogotá', async () => {
+    const [snapped, outside] = await snapToRoads(db, [chapinero, soacha]);
+
+    expect(snapped).not.toBeNull();
+    expect(outside).toBeNull();
   });
 });

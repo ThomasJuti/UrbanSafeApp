@@ -37,6 +37,11 @@ export const PARAMS = {
   },
   alert: { radiusM: 300, lookaheadM: 1000 },
   alertWindow: { reportedWithinMs: 6 * HOUR_MS, occurredWithinMs: 24 * HOUR_MS },
+  // RN-13: un incidente que cumple esto penaliza los tramos cercanos, solo en la ruta segura.
+  // El recargo multiplica el costo del tramo por (1 + penalty); no es un bloqueo.
+  avoidZone: { minSeverity: 5, minConfidence: 0.4, radiusM: 150, penalty: 10 },
+  // M8: capa de riesgo por calle. Con zoom 14 una pantalla ancha abarca ~0,06°; el tope deja margen.
+  edgeRisk: { maxBboxDeg: 0.1, minRisk: 0.05, limit: 5000, minZoom: 14 },
   reportRateLimit: { max: 5, windowMs: HOUR_MS },
   // Tope por IP contra quien rota su deviceId o martilla el API. Holgado a propósito: en la demo
   // ~30 personas pueden salir por la misma IP pública de una red.
@@ -48,6 +53,8 @@ export const PARAMS = {
     deliverySessions: 60,
     // Aceptar y pedir otro pedido: los comandos de entrega que calculan rutas o consultan la base.
     deliveryRouting: 300,
+    // Lectura del mapa, pero consulta tramos de la base: tope holgado por IP.
+    edgeRisk: 600,
   },
   initialConfidence: { news: 0.7, community: 0.3 },
   areaConfidenceFactor: { neighborhood: 0.5, locality: 0.25, street: 0.5 },

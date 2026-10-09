@@ -33,6 +33,7 @@ Requiere Node ≥ 22 y pnpm 10 (`npm i -g pnpm@10`). Copiar `.env.example` a `.e
 | `pnpm db:seed` | Recarga los datos de prueba de `db/seeds` |
 | `pnpm db:import-graph` | Reemplaza el grafo vial con las vías del casco urbano descargadas de OSM (Overpass) |
 | `pnpm db:import-base-risk` | Recalcula el riesgo base por localidad con el último corte de datos abiertos (M2) |
+| `pnpm db:import-safe-places` | Reemplaza los puntos seguros (policía/CAI y gasolineras 24 h) con los de OSM (Overpass) |
 | `pnpm dev` | API en `:3000` y web en `:5173` (la web redirige `/api` al API) |
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | Verificaciones antes de un PR |
 | `pnpm test:integration` | Pruebas contra PostGIS real (`TEST_DATABASE_URL`) |
@@ -56,7 +57,7 @@ apps/
   web/src/
     app/            # arranque: router, providers
     pages/          # /domiciliario (M7) y /reportar (M8); solo componen features
-    features/       # incidents, base-risk, reports, routing, alerts, delivery, nickname
+    features/       # incidents, base-risk, edge-risk, safe-places, reports, routing, alerts, delivery, nickname
     shared/         # mapa base, cliente HTTP, socket, UI genérica
 packages/
   shared/src/       # tipos y esquemas compartidos: Incidente, catálogo, parámetros, contratos, eventos
@@ -75,8 +76,9 @@ docs/spec.md
 | `news-ingestion` | M1, F3: RSS, extracción con LLM, geocodificación | Hecho: feeds RSS cada 45 min (solo con `backgroundJobs` y las dos claves), duplicado exacto antes del LLM (`news_articles`), una lectura por historia y descarte de seguimientos sin el delito en el título, consultas de Google con `intitle:`, extractor Gemini y geocodificador Google detrás de sus interfaces, caché de geocodificación, fusión en SQL y eventos al bus. Una vía larga se guarda como corredor de OSM; una localidad no se fusiona con otra noticia de la misma localidad. Revisión manual de §7 hecha el 2026-10-07: 46 de 50 con tipo y ubicación correctos, y 0 de 7 incidentes guardados son duplicados |
 | `open-data` | M2: `RiesgoBaseZona` por localidad | Hecho: importación del dataset oficial, cálculo normalizado en SQL, lectura para el mapa y revisión cada 30 días con los trabajos de fondo |
 | `reports` | M3, F4, RN-02, RN-04, RN-12: reportes, confirmar/negar, reputación, límite, visibilidad | Hecho: envío con límite por dispositivo (RN-04) y por IP, solo dentro del casco urbano, deduplicación e idempotencia, confirmar/negar con voto único, reputación, visibilidad (RN-12) y emisión en tiempo real. RN-02 queda como lo permite el MVP (punto elegido en el mapa) |
-| `risk` | M4, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs` |
-| `routing` | M5, RN-07: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo e incidentes cercanos, cola acotada (503 al llenarse), caché corta por par de vértices (se invalida al recalcular el riesgo) y límite por IP; cumple el presupuesto en carga sostenida |
+| `risk` | M4, M8, RN-05, RN-06, RN-10, RN-11: puntaje de riesgo por tramo y multiplicador horario | Hecho: riesgo precalculado por tramo y franja, recálculo incremental por eventos del bus (un lote corriendo y uno en espera, como máximo), completo cada hora (decaimiento) y multiplicador diario. Corre solo si el servidor arranca con `backgroundJobs`. Además `GET /api/edge-risk` (M8): riesgo por calle de la franja actual para pintarlo en el mapa, con tope de caja y límite por IP |
+| `safe-places` | M6, M8: puntos seguros (policía/CAI y gasolineras 24 h) | Hecho: importación desde OSM (`pnpm db:import-safe-places`), `GET /api/safe-places` con una hora de caché. La web los dibuja en ambos mapas y `/domiciliario` muestra el más cercano en la alerta |
+| `routing` | M5, RN-07, RN-13: 3 rutas (rápida, balanceada, segura) | Hecho: 3 rutas con nivel de riesgo, incidentes cercanos, tramos por nivel (`segments`) y zonas a evitar que tocan (`hotIncidents`); la segura penaliza las zonas a evitar (RN-13), cola acotada (503 al llenarse), caché corta por par de vértices (se invalida al recalcular el riesgo) y límite por IP; cumple el presupuesto en carga sostenida |
 | `alerts` | M6, RN-08: alertas sobre la ruta activa | Hecho: al elegir ruta se cargan los candidatos una vez; cada posición mira solo esa lista. Un incidente nuevo se compara con las rutas en camino. El aviso va a la sala privada y recalcular es un comando del domiciliario |
 | `delivery` | M7: pedidos simulados, fuente de posición, resumen, app del domiciliario | Hecho servidor, web y pruebas: 30 sesiones entregan a la vez (la ráfaga al aceptar no cumple 1,5 s) y el criterio "Valor de la ruta segura" está medido y hoy no se cumple |
 

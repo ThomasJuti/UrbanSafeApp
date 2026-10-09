@@ -2,14 +2,12 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider } from 'react-rou
 import { DeliveryPage } from '../pages/DeliveryPage';
 import { ReportPage } from '../pages/ReportPage';
 import { BrandMark } from '../shared/BrandMark';
-import { ModeSwitch } from '../shared/ModeSwitch';
 
 function Shell() {
   return (
     <>
       <Outlet />
       <BrandMark />
-      <ModeSwitch />
     </>
   );
 }

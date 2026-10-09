@@ -10,14 +10,20 @@ import { postJson } from '../../shared/http';
 
 const NOT_FOUND = 404;
 const TOO_MANY_REQUESTS = 429;
+const UNPROCESSABLE = 422;
 
-export type SubmitResult = { kind: 'accepted'; outcome: ReportOutcome } | { kind: 'rate_limited' } | { kind: 'failed' };
+export type SubmitResult =
+  | { kind: 'accepted'; outcome: ReportOutcome }
+  | { kind: 'rate_limited' }
+  | { kind: 'outside_bogota' }
+  | { kind: 'failed' };
 
 export async function submitReport(body: CreateReportBody): Promise<SubmitResult> {
   try {
     const result = await postJson('/api/reports', body, createReportResponseSchema);
     if (result.ok) return { kind: 'accepted', outcome: result.data.outcome };
-    return result.status === TOO_MANY_REQUESTS ? { kind: 'rate_limited' } : { kind: 'failed' };
+    if (result.status === TOO_MANY_REQUESTS) return { kind: 'rate_limited' };
+    return result.status === UNPROCESSABLE ? { kind: 'outside_bogota' } : { kind: 'failed' };
   } catch {
     return { kind: 'failed' };
   }

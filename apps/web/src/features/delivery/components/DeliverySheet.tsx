@@ -1,6 +1,7 @@
-import { INCIDENT_CATALOG, PARAMS, type RouteKind } from '@urbansafe/shared';
+import { INCIDENT_CATALOG, PARAMS, SAFE_PLACE_LABELS, type RouteKind } from '@urbansafe/shared';
 import type { ReactNode } from 'react';
 import { formatDistance, formatDuration, RouteOptions, ROUTE_KIND_LABELS } from '../../routing';
+import type { NearestSafePlace } from '../../safe-places';
 import { chosenOption, orderDistances, remaining } from '../delivery-state';
 import { formatExposureAvoided, formatExtraTime, formatIncidentsAvoided } from '../format';
 import type { DeliverySession } from '../use-delivery-session';
@@ -9,6 +10,9 @@ type Props = {
   session: DeliverySession;
   picked: RouteKind;
   onPick: (kind: RouteKind) => void;
+  voice: { enabled: boolean; toggle: () => void };
+  // La parada segura más cercana a la posición actual; null si no hay alerta o no hay puntos.
+  safePlace: NearestSafePlace | null;
 };
 
 function SpeedControl({ value, onChange }: { value: number; onChange: (multiplier: number) => void }) {
@@ -29,11 +33,19 @@ function SpeedControl({ value, onChange }: { value: number; onChange: (multiplie
   );
 }
 
+function VoiceToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="button voice-toggle" aria-pressed={enabled} onClick={onToggle}>
+      Voz: {enabled ? 'sí' : 'no'}
+    </button>
+  );
+}
+
 function Actions({ children }: { children: ReactNode }) {
   return <div className="sheet-actions">{children}</div>;
 }
 
-export function DeliverySheet({ session, picked, onPick }: Props) {
+export function DeliverySheet({ session, picked, onPick, voice, safePlace }: Props) {
   const { state, alert, pending, booting, accept, choose, setSpeed, next, retry, recalculate } = session;
 
   if (booting && !state) {
@@ -117,12 +129,21 @@ export function DeliverySheet({ session, picked, onPick }: Props) {
         {alert && (
           <div className="alert-banner" role="status">
             <p>{INCIDENT_CATALOG[alert.type].label} adelante en la ruta</p>
+            {safePlace && (
+              <p className="safe-place-hint">
+                Parada segura más cercana: {safePlace.place.name ?? SAFE_PLACE_LABELS[safePlace.place.kind]} a{' '}
+                {Math.round(safePlace.distanceM)} m
+              </p>
+            )}
             <button type="button" className="button primary" disabled={pending} onClick={recalculate}>
               {pending ? 'Calculando…' : 'Recalcular ruta'}
             </button>
           </div>
         )}
-        <SpeedControl value={state.speedMultiplier} onChange={setSpeed} />
+        <div className="riding-controls">
+          <SpeedControl value={state.speedMultiplier} onChange={setSpeed} />
+          <VoiceToggle enabled={voice.enabled} onToggle={voice.toggle} />
+        </div>
       </div>
     );
   }

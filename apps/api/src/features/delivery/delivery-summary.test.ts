@@ -14,6 +14,8 @@ function option(kind: RouteKind, durationS: number, riskScore: number, nearbyInc
       [0, 0],
       [0, 1],
     ],
+    segments: [],
+    hotIncidents: [],
   };
 }
 

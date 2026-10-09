@@ -1,3 +1,4 @@
+import { PARAMS } from '@urbansafe/shared';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
@@ -79,7 +80,7 @@ const BAND = 2;
 
 async function findPath(trx: Db, from: number | { lng: number; lat: number }, to: number, marginM: number, alpha = 0) {
   const origin = typeof from === 'number' ? point(from) : from;
-  const [path] = await queryRoutes(trx, { from: origin, to: point(to), marginM, alphas: [alpha], band: BAND });
+  const [path] = await queryRoutes(trx, { from: origin, to: point(to), marginM, alphas: [alpha], avoidFactors: [0], band: BAND });
   return path ?? null;
 }
 
@@ -150,7 +151,7 @@ describe('route_between con riesgo (RN-07)', () => {
       await insertGraph(trx);
       await setRisk(trx, V.a, V.b, 1);
 
-      const paths = await queryRoutes(trx, { from: point(V.a), to: point(V.b), marginM: 2000, alphas: [5, 0], band: BAND });
+      const paths = await queryRoutes(trx, { from: point(V.a), to: point(V.b), marginM: 2000, alphas: [5, 0], avoidFactors: [0, 0], band: BAND });
 
       expect(paths.map((path) => path?.lengthM)).toEqual([333, 111]);
     });
@@ -208,6 +209,118 @@ describe('route_between con riesgo (RN-07)', () => {
       expect(ids).toContain(near.id);
       expect(ids).not.toContain(hidden.id);
       expect(ids).not.toContain(far.id);
+    });
+  });
+});
+
+describe('route_between con zonas a evitar (RN-13)', () => {
+  const SEED_ID = '00000000-0000-4000-8000-000000000013';
+
+  // Polígono diminuto sobre el lado a-b: solo ese tramo lo interseca, no la vuelta por d y c.
+  async function seedHotIncident(trx: Db, overrides: { severity?: number; confidence?: number; kind?: 'point' | 'neighborhood' | 'locality' } = {}) {
+    const kind = overrides.kind ?? 'neighborhood';
+    await trx
+      .insertInto('incidents')
+      .values({
+        id: SEED_ID,
+        type: 'armed_robbery',
+        severity: overrides.severity ?? 5,
+        location_kind: kind,
+        location_name: kind === 'point' ? null : 'Zona de prueba',
+        geom:
+          kind === 'point'
+            ? sql`ST_SetSRID(ST_MakePoint(5.0005, 5), 4326)`
+            : sql`ST_Buffer(ST_SetSRID(ST_MakePoint(5.0005, 5), 4326), 0.00001)`,
+        occurred_at: new Date(),
+        time_known: true,
+        confidence: overrides.confidence ?? 0.7,
+      })
+      .execute();
+  }
+
+  async function plan(trx: Db, avoidFactors: number[]) {
+    return queryRoutes(trx, {
+      from: point(V.a),
+      to: point(V.b),
+      marginM: 2000,
+      alphas: [0, 0],
+      avoidFactors,
+      band: BAND,
+    });
+  }
+
+  it('la ruta con recargo rodea la zona; la rápida pasa y la lista entre sus hotIncidents', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await seedHotIncident(trx);
+
+      const [fastest, safest] = await plan(trx, [0, PARAMS.avoidZone.penalty]);
+
+      expect(fastest?.path).toEqual([AT[V.a], AT[V.b]]);
+      expect(fastest?.hotIncidents.map((hot) => hot.id)).toEqual([SEED_ID]);
+      expect(safest?.path).toEqual([AT[V.a], AT[V.d], AT[V.c], AT[V.b]]);
+      expect(safest?.hotIncidents).toEqual([]);
+    });
+  });
+
+  it('no es un bloqueo: si no hay otra salida, la ruta con recargo pasa por la zona', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await seedHotIncident(trx, { kind: 'point' });
+
+      // Con el punto en medio del lado, los 150 m cubren también la vuelta: todo cuesta más y el directo gana.
+      const [, safest] = await plan(trx, [0, PARAMS.avoidZone.penalty]);
+
+      expect(safest?.path).toEqual([AT[V.a], AT[V.b]]);
+      expect(safest?.hotIncidents.map((hot) => hot.id)).toEqual([SEED_ID]);
+    });
+  });
+
+  it.each([
+    ['de severidad baja', { severity: 4 }],
+    ['con poca confianza', { confidence: 0.3 }],
+    ['de una localidad', { kind: 'locality' as const }],
+  ])('un incidente %s no es zona a evitar', async (_, overrides) => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await seedHotIncident(trx, overrides);
+
+      const [fastest, safest] = await plan(trx, [0, PARAMS.avoidZone.penalty]);
+
+      expect(fastest?.hotIncidents).toEqual([]);
+      expect(safest?.path).toEqual([AT[V.a], AT[V.b]]);
+    });
+  });
+
+  it('un incidente fuera de la ventana de alertas no es zona a evitar', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await seedHotIncident(trx);
+      await trx.updateTable('incidents').set({ reported_at: new Date(Date.now() - PARAMS.alertWindow.reportedWithinMs - 60_000) }).execute();
+
+      const [fastest] = await plan(trx, [0, 0]);
+
+      expect(fastest?.hotIncidents).toEqual([]);
+    });
+  });
+
+  it('devuelve los tramos por nivel de riesgo, consecutivos y que cubren toda la ruta', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await setRisk(trx, V.b, V.c, 0.9);
+
+      const [detour] = await queryRoutes(trx, {
+        from: point(V.b),
+        to: point(V.a),
+        marginM: 2000,
+        alphas: [0],
+        avoidFactors: [0],
+        band: BAND,
+      });
+
+      expect(detour?.segments.map((segment) => segment.level)).toEqual(['high', 'low']);
+      expect(detour?.segments[0]?.path).toEqual([AT[V.b], AT[V.c]]);
+      expect(detour?.segments[1]?.path).toEqual([AT[V.c], AT[V.d], AT[V.a]]);
     });
   });
 });

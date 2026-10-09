@@ -127,6 +127,15 @@ export interface GeocodeCacheTable {
   cached_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+export interface SafePlacesTable {
+  id: Generated<string>;
+  osm_type: 'node' | 'way';
+  osm_id: string;
+  kind: 'police' | 'fuel';
+  name: string | null;
+  geom: ColumnType<never, unknown, unknown>;
+}
+
 export interface Database {
   incidents: IncidentsTable;
   incident_sources: IncidentSourcesTable;
@@ -139,4 +148,5 @@ export interface Database {
   locality_time_multipliers: LocalityTimeMultipliersTable;
   news_articles: NewsArticlesTable;
   geocode_cache: GeocodeCacheTable;
+  safe_places: SafePlacesTable;
 }
