@@ -762,6 +762,11 @@ a.button:focus-visible {
   color: var(--foreground);
 }
 
+.alert-banner .safe-place-hint {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
 .alert-banner p {
   margin: 0 0 10px;
 }

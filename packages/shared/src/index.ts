@@ -11,3 +11,4 @@ export * from './contracts/delivery';
 export * from './contracts/errors';
 export * from './contracts/base-risk';
 export * from './contracts/edge-risk';
+export * from './contracts/safe-places';
