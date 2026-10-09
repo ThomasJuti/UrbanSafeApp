@@ -69,8 +69,8 @@ a.button:focus-visible {
   top: calc(16px + env(safe-area-inset-top));
   left: calc(16px + env(safe-area-inset-left));
   z-index: 5;
-  width: 64px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
   overflow: hidden;
   border: 2px solid oklch(1 0 0 / 14%);
   border-radius: 50%;
@@ -86,35 +86,6 @@ a.button:focus-visible {
   height: 100%;
   object-fit: contain;
   transform: scale(0.62);
-}
-
-.mode-switch {
-  position: absolute;
-  top: calc(24px + env(safe-area-inset-top));
-  left: calc(92px + env(safe-area-inset-left));
-  z-index: 5;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: oklch(0.25 0.04 260 / 0.92);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
-}
-
-.mode-switch a {
-  padding: 8px 14px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.mode-switch a[aria-current='page'] {
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 
 .here {
