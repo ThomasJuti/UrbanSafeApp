@@ -10,6 +10,9 @@ export function resultMessage(result: SubmitResult): ResultMessage {
       text: `Llegaste al límite de ${PARAMS.reportRateLimit.max} reportes por hora. Intenta más tarde.`,
     };
   }
+  if (result.kind === 'outside_bogota') {
+    return { tone: 'warning', text: 'Ese punto queda fuera de Bogotá. Solo se pueden reportar incidentes dentro de la ciudad.' };
+  }
   if (result.kind === 'failed') {
     return { tone: 'error', text: 'No se pudo enviar el reporte. Revisa tu conexión e inténtalo otra vez.' };
   }

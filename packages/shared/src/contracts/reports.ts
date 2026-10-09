@@ -42,4 +42,9 @@ export type VoteOutcome = (typeof VOTE_OUTCOMES)[number];
 export const castVoteResponseSchema = z.object({ outcome: z.enum(VOTE_OUTCOMES) });
 export type CastVoteResponse = z.infer<typeof castVoteResponseSchema>;
 
-export const REPORT_ERRORS = { rateLimited: 'rate_limited', incidentNotAvailable: 'incident_not_available' } as const;
+export const REPORT_ERRORS = {
+  rateLimited: 'rate_limited',
+  incidentNotAvailable: 'incident_not_available',
+  // Dentro del casco urbano pero en un municipio vecino (Soacha, Mosquera, Chía…).
+  outsideBogota: 'outside_bogota',
+} as const;
