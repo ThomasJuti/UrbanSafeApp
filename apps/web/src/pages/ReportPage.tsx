@@ -1,4 +1,5 @@
 import { BaseRiskLayer } from '../features/base-risk';
+import { EdgeRiskLayer } from '../features/edge-risk';
 import { IncidentsLayer, INCIDENT_LAYER_IDS } from '../features/incidents';
 import { NicknameForm, useIdentity } from '../features/nickname';
 import { CurrentLocation, IncidentVote, ReportComposer } from '../features/reports';
@@ -12,6 +13,7 @@ export function ReportPage() {
     <>
       <BaseMap>
         <BaseRiskLayer />
+        <EdgeRiskLayer />
         <CurrentLocation />
         <IncidentsLayer
           renderDetails={

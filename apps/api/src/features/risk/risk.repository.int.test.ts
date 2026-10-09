@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../../shared/db';
 import { withRollback } from '../../shared/db/testing';
-import { refreshEdgeRisk, refreshTimeMultipliers } from './risk.repository';
+import { listEdgeRiskInBbox, refreshEdgeRisk, refreshTimeMultipliers } from './risk.repository';
 
 // Tramos de juguete en el mar cerca de (6,6), lejos de Bogotá y de las otras pruebas. Ids altos
 // para no chocar con nodos de OSM.
@@ -207,5 +207,33 @@ describe('recálculos simultáneos', () => {
     const results = await Promise.all([refreshEdgeRisk(db, ids), refreshEdgeRisk(db, ids), refreshEdgeRisk(db, ids)]);
 
     expect(results).toHaveLength(3);
+  });
+});
+
+describe('listEdgeRiskInBbox (M8)', () => {
+  const BBOX = { minLng: 5.999, minLat: 5.999, maxLng: 6.003, maxLat: 6.001 };
+
+  it('lista los tramos de la caja con riesgo en la franja pedida y omite los casi sin riesgo', async () => {
+    await withRollback(db, async (trx) => {
+      const [onEdge, north] = await insertToyEdges(trx);
+      await trx.updateTable('road_edges').set({ risk: [0, 0.6, 0, 0] }).where('id', '=', onEdge!).execute();
+      await trx.updateTable('road_edges').set({ risk: [0, 0.01, 0, 0] }).where('id', '=', north!).execute();
+
+      const edges = await listEdgeRiskInBbox(trx, BBOX, 1, 100);
+
+      expect(edges).toHaveLength(1);
+      expect(edges[0]?.risk).toBeCloseTo(0.6, 5);
+      expect(edges[0]?.path[0]).toEqual([6, 6]);
+      expect(await listEdgeRiskInBbox(trx, BBOX, 2, 100)).toEqual([]);
+    });
+  });
+
+  it('respeta el límite', async () => {
+    await withRollback(db, async (trx) => {
+      await insertToyEdges(trx);
+      await trx.updateTable('road_edges').set({ risk: [0.5, 0.5, 0.5, 0.5] }).where('source', '>=', String(NODE)).execute();
+
+      expect(await listEdgeRiskInBbox(trx, { ...BBOX, maxLat: 6.1 }, 0, 1)).toHaveLength(1);
+    });
   });
 });
