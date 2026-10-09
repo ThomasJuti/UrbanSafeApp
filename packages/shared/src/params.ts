@@ -37,6 +37,9 @@ export const PARAMS = {
   },
   alert: { radiusM: 300, lookaheadM: 1000 },
   alertWindow: { reportedWithinMs: 6 * HOUR_MS, occurredWithinMs: 24 * HOUR_MS },
+  // RN-13: un incidente que cumple esto penaliza los tramos cercanos, solo en la ruta segura.
+  // El recargo multiplica el costo del tramo por (1 + penalty); no es un bloqueo.
+  avoidZone: { minSeverity: 5, minConfidence: 0.4, radiusM: 150, penalty: 10 },
   reportRateLimit: { max: 5, windowMs: HOUR_MS },
   // Tope por IP contra quien rota su deviceId o martilla el API. Holgado a propósito: en la demo
   // ~30 personas pueden salir por la misma IP pública de una red.

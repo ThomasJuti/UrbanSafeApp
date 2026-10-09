@@ -39,6 +39,8 @@ function riding(sessionId: string): DeliveryState {
         riskLevel: 'medium',
         nearbyIncidentIds: [],
         path: PATH,
+        segments: [],
+        hotIncidents: [],
       },
     ],
     chosen: 'fastest',

@@ -26,6 +26,8 @@ function state(overrides: Partial<DeliveryState> = {}): DeliveryState {
           [-74.08, 4.65],
           [-74.08, 4.67],
         ],
+        segments: [],
+        hotIncidents: [],
       },
     ],
     chosen: 'fastest',
