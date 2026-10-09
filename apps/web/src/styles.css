@@ -495,9 +495,8 @@ a.button:focus-visible {
   left: 12px;
   z-index: 2;
   display: grid;
-  gap: 8px;
-  width: 220px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: oklch(0.25 0.04 260 / 0.92);
@@ -508,22 +507,19 @@ a.button:focus-visible {
   pointer-events: none;
 }
 
+/* Riesgo de la zona en una sola línea: Bajo ▬▬ Alto. */
+.risk-legend-zone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+}
+
 .risk-legend-bar {
+  display: inline-block;
+  width: 72px;
   height: 6px;
   border-radius: 999px;
-}
-
-.risk-legend-scale {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.incident-scale {
-  display: grid;
-  gap: 6px;
 }
 
 .incident-scale-key {
@@ -531,11 +527,26 @@ a.button:focus-visible {
   gap: 10px;
 }
 
-.incident-scale-key span {
+/* Cada entrada de la leyenda es un botón que apaga o enciende esa capa. La leyenda deja pasar los
+   toques al mapa; solo los botones los reciben. */
+.legend-toggle {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
   color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.legend-toggle[aria-pressed='false'] {
+  opacity: 0.4;
+  text-decoration: line-through;
 }
 
 .incident-scale .dot {

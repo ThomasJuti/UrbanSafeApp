@@ -7,6 +7,7 @@ import { theme } from '../../../shared/theme';
 import { getSocket } from '../../../shared/socket';
 import { fetchIncidents } from '../api';
 import { createIncidentStore } from '../incident-store';
+import { severityFilter, severityGroupOf } from '../severity-filter';
 import { toFeatureCollection } from '../to-geojson';
 
 const SOURCE_ID = 'incidents';
@@ -112,7 +113,12 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
     });
 
     const store = createIncidentStore();
-    const render = () => map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(toFeatureCollection(store.values()));
+    // Se filtra antes de pasarle los datos a la fuente, para que los grupos tampoco cuenten lo apagado.
+    const render = () =>
+      map
+        .getSource<GeoJSONSource>(SOURCE_ID)
+        ?.setData(toFeatureCollection(store.values().filter((incident) => severityFilter.isVisible(severityGroupOf(incident.severity)))));
+    const unsubscribeFilter = severityFilter.subscribe(render);
 
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -205,6 +211,7 @@ export function IncidentsLayer({ renderDetails }: { renderDetails?: ((incident: 
 
     return () => {
       closePopup();
+      unsubscribeFilter();
       clearTimeout(timer);
       controller?.abort();
       socket.off('incident.created', onLiveIncident);

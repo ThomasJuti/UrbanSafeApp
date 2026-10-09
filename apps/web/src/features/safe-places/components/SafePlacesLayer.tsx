@@ -4,6 +4,7 @@ import { Popup, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
 import { useEffect } from 'react';
 import { useMap } from '../../../shared/map';
 import { theme } from '../../../shared/theme';
+import { safePlacesFilter } from '../safe-places-filter';
 import { useSafePlaces } from '../use-safe-places';
 
 const SOURCE_ID = 'safe-places';
@@ -22,6 +23,7 @@ export function SafePlacesLayer() {
       id: POINTS_LAYER,
       type: 'circle',
       source: SOURCE_ID,
+      layout: { visibility: safePlacesFilter.isVisible('safe') ? 'visible' : 'none' },
       paint: {
         'circle-color': theme.safe,
         // Visibles desde la ciudad entera: pequeños de lejos para no tapar los incidentes.
@@ -58,11 +60,18 @@ export function SafePlacesLayer() {
     const setPointer = () => (map.getCanvas().style.cursor = 'pointer');
     const clearPointer = () => (map.getCanvas().style.cursor = '');
 
+    const applyFilter = () => {
+      map.setLayoutProperty(POINTS_LAYER, 'visibility', safePlacesFilter.isVisible('safe') ? 'visible' : 'none');
+      if (!safePlacesFilter.isVisible('safe')) popup?.remove();
+    };
+    const unsubscribeFilter = safePlacesFilter.subscribe(applyFilter);
+
     map.on('click', POINTS_LAYER, onClick);
     map.on('mouseenter', POINTS_LAYER, setPointer);
     map.on('mouseleave', POINTS_LAYER, clearPointer);
 
     return () => {
+      unsubscribeFilter();
       popup?.remove();
       map.off('click', POINTS_LAYER, onClick);
       map.off('mouseenter', POINTS_LAYER, setPointer);

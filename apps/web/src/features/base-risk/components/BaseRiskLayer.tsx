@@ -1,6 +1,7 @@
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { IncidentScale } from '../../incidents';
+import { SafePlaceKey } from '../../safe-places';
 import { useMap } from '../../../shared/map';
 import { theme } from '../../../shared/theme';
 import { fetchBaseRisk } from '../api';
@@ -17,6 +18,7 @@ const HIGH_COLOR = theme.danger;
 export function BaseRiskLayer() {
   const map = useMap();
   const [period, setPeriod] = useState<string | null>(null);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     // Debajo de las etiquetas del mapa base, para que los nombres de calles se sigan leyendo.
@@ -64,19 +66,30 @@ export function BaseRiskLayer() {
     };
   }, [map]);
 
+  useEffect(() => {
+    for (const layer of [FILL_LAYER, OUTLINE_LAYER]) {
+      if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', visible ? 'visible' : 'none');
+    }
+  }, [map, visible]);
+
   return (
     <div className="risk-legend">
       <IncidentScale />
+      <SafePlaceKey />
       {period && (
-        <>
-          <span>Riesgo histórico por localidad</span>
-          <div className="risk-legend-bar" style={{ background: `linear-gradient(to right, ${LOW_COLOR}, ${MID_COLOR}, ${HIGH_COLOR})` }} />
-          <div className="risk-legend-scale">
-            <span>Bajo</span>
-            <span>{period}</span>
-            <span>Alto</span>
-          </div>
-        </>
+        // Lo esencial: qué tan peligrosa es la zona. El periodo del dataset queda como tooltip.
+        <button
+          type="button"
+          className="legend-toggle risk-legend-zone"
+          aria-pressed={visible}
+          title={`Riesgo histórico por localidad, ${period}`}
+          onClick={() => setVisible((current) => !current)}
+        >
+          <span>Zona</span>
+          <span>Bajo</span>
+          <span className="risk-legend-bar" style={{ background: `linear-gradient(to right, ${LOW_COLOR}, ${MID_COLOR}, ${HIGH_COLOR})` }} />
+          <span>Alto</span>
+        </button>
       )}
     </div>
   );
