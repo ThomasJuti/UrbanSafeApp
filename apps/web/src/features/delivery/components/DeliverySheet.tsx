@@ -2,6 +2,7 @@ import { INCIDENT_CATALOG, PARAMS, SAFE_PLACE_LABELS, type RouteKind } from '@ur
 import type { ReactNode } from 'react';
 import { formatDistance, formatDuration, RouteOptions, ROUTE_KIND_LABELS } from '../../routing';
 import type { NearestSafePlace } from '../../safe-places';
+import { avoidNotice } from '../avoid-notice';
 import { chosenOption, orderDistances, remaining } from '../delivery-state';
 import { formatExposureAvoided, formatExtraTime, formatIncidentsAvoided } from '../format';
 import type { DeliverySession } from '../use-delivery-session';
@@ -100,9 +101,21 @@ export function DeliverySheet({ session, picked, onPick, voice, safePlace }: Pro
   }
 
   if (state.status === 'choosing') {
+    const notice = avoidNotice(state);
     return (
       <div className="sheet route-sheet">
         <h2>{state.leg === 'to_pickup' ? 'Cómo ir a la recogida' : 'Cómo ir a la entrega'}</h2>
+        {notice && (
+          <div className={`avoid-notice ${notice.tone}`} role="status">
+            <p>{notice.text}</p>
+            {notice.tone === 'warning' && safePlace && (
+              <p className="safe-place-hint">
+                Parada segura más cercana: {safePlace.place.name ?? SAFE_PLACE_LABELS[safePlace.place.kind]} a{' '}
+                {Math.round(safePlace.distanceM)} m
+              </p>
+            )}
+          </div>
+        )}
         <RouteOptions routes={state.options} selected={picked} onSelect={onPick} />
         <Actions>
           <button type="button" className="button primary" disabled={pending} onClick={() => choose(picked)}>
