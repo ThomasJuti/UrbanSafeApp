@@ -11,15 +11,33 @@ type Props = {
   paddingBottomPx: number;
 };
 
+const RADAR_WAVES = 3;
+
+// Ondas que salen del punto del aviso, como un radar, para que se note en el mapa en movimiento.
+// Van en su propio marcador, debajo del pin, y no reciben toques.
+function radarElement(): HTMLElement {
+  const radar = document.createElement('div');
+  radar.className = 'alert-radar';
+  radar.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < RADAR_WAVES; index++) {
+    const wave = document.createElement('span');
+    wave.className = 'alert-radar-wave';
+    radar.append(wave);
+  }
+  return radar;
+}
+
 function useAlertMarker(point: { lng: number; lat: number } | null) {
   const map = useMap();
   const lat = point?.lat;
   const lng = point?.lng;
   useEffect(() => {
     if (lat === undefined || lng === undefined) return;
+    const radar = new Marker({ element: radarElement() }).setLngLat([lng, lat]).addTo(map);
     const marker = new Marker({ color: theme.danger }).setLngLat([lng, lat]).addTo(map);
     return () => {
       marker.remove();
+      radar.remove();
     };
   }, [map, lat, lng]);
 }
