@@ -27,9 +27,13 @@ export function SafePlacesLayer() {
       paint: {
         'circle-color': theme.safe,
         // Visibles desde la ciudad entera: pequeños de lejos para no tapar los incidentes.
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 6],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2, 14, 4.5],
+        // Son muchos: de lejos casi se funden con el mapa y ganan presencia al acercarse.
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.75],
         'circle-stroke-color': theme.background,
-        'circle-stroke-width': 1.5,
+        // Sin borde de lejos: a ese tamaño el borde pesa tanto como el punto.
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 0, 14, 1],
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.75],
       },
     });
 
