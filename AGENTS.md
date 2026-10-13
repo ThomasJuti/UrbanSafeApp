@@ -184,7 +184,7 @@ Si una feature no cumple su presupuesto, no se da por terminada.
 
 ### Alertas y simulación (M6, M7)
 - **Un único ticker global** avanza todas las sesiones de entrega. Prohibido un `setInterval` por usuario.
-- **Candidatos precalculados.** Al elegir una ruta se calcula una vez qué incidentes están cerca (300 m, ventana de alertas de M6). En cada tick se evalúan solo esos candidatos en memoria, sin consultar la base.
+- **Candidatos precalculados.** Al elegir una ruta se calcula una vez qué incidentes están cerca (1 km, ventana de alertas de M6). En cada tick se evalúan solo esos candidatos en memoria, sin consultar la base.
 - **Incidente nuevo:** se compara una vez contra las rutas activas (son ~30) y se agrega a los candidatos de las rutas afectadas.
 - **Posiciones a frecuencia limitada** (~1 Hz por sesión) y solo a la sala del domiciliario (RN-03).
 

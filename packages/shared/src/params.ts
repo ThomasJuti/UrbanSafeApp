@@ -35,7 +35,8 @@ export const PARAMS = {
     defaultSpeedMultiplier: 10,
     positionTickMs: 1000,
   },
-  alert: { radiusM: 300, lookaheadM: 1000 },
+  // 1 km a los lados: también avisa de lo que pasa en las calles paralelas a la ruta.
+  alert: { radiusM: 1000, lookaheadM: 1000 },
   alertWindow: { reportedWithinMs: 6 * HOUR_MS, occurredWithinMs: 24 * HOUR_MS },
   // RN-13: un incidente que cumple esto penaliza los tramos cercanos, solo en la ruta segura.
   // El recargo multiplica el costo del tramo por (1 + penalty); no es un bloqueo.
