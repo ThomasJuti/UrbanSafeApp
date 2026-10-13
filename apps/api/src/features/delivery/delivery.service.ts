@@ -13,7 +13,7 @@ import {
   type RouteRequest,
 } from '@urbansafe/shared';
 import type { EventBus } from '../../shared/events';
-import { RoutingBusyError } from '../routing';
+import { RoutingBusyError, type PlanOptions } from '../routing';
 import { summarizeDelivery, type CompletedLeg } from './delivery-summary';
 import { generateOrder, type Order, type Random, type SnapToRoads } from './order-generator';
 import { createSimulatedRoute, type SimulatedRoute } from './position/simulated-route';
@@ -27,7 +27,7 @@ const MAX_SESSIONS = 500;
 export const LEG_RETRY_MS = 2000;
 const MAX_LEG_ATTEMPTS = 5;
 
-export type PlanRoutes = (request: RouteRequest, now?: Date) => Promise<RouteOption[] | null>;
+export type PlanRoutes = (request: RouteRequest, now?: Date, options?: PlanOptions) => Promise<RouteOption[] | null>;
 
 export type DeliveryDeps = {
   planRoutes: PlanRoutes;
@@ -73,6 +73,8 @@ type Session = {
   summary: DeliverySummary | null;
   ride: { source: SimulatedRoute; lastTickMs: number } | null;
   alert: DeliveryAlert | null;
+  // El aviso desde el que se pidió recalcular; las rutas del tramo lo esquivan.
+  avoiding: DeliveryAlert | null;
   baseline: { leg: DeliveryLeg; fastest: RouteOption; ridden: Ridden } | null;
   // Cola de comandos de la sesión: un doble clic o un comando durante el cálculo de rutas espera
   // al anterior en vez de cruzarse con él.
@@ -113,6 +115,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
       speedMultiplier: session.speedMultiplier,
       summary: session.summary,
       alert: session.status === 'riding' ? session.alert : null,
+      avoiding: session.status === 'choosing' ? session.avoiding : null,
     };
   }
 
@@ -149,12 +152,14 @@ export function createDeliveryService(deps: DeliveryDeps) {
       summary: null,
       ride: null,
       alert: null,
+      avoiding: null,
       baseline: null,
     } satisfies Partial<Session>);
   }
 
   // Corre dentro de la cola de la sesión. Con 'busy' la sesión queda en routing y decide quien llama.
-  async function routeLeg(session: Session): Promise<'done' | 'busy'> {
+  // Con `avoid` (recalcular desde un aviso), las rutas esquivan ese incidente aunque no cumpla RN-13.
+  async function routeLeg(session: Session, avoid: DeliveryAlert | null = null): Promise<'done' | 'busy'> {
     Object.assign(session, {
       status: 'routing',
       options: [],
@@ -162,13 +167,16 @@ export function createDeliveryService(deps: DeliveryDeps) {
       progressM: 0,
       ride: null,
       alert: null,
+      avoiding: avoid,
     } satisfies Partial<Session>);
     publish(session);
 
     const to = session.leg === 'to_pickup' ? session.order.pickup : session.order.dropoff;
     try {
       // El riesgo es el de la hora de inicio del tramo (M7, riesgo evitado).
-      const options = await deps.planRoutes({ from: session.position, to }, new Date(now()));
+      const options = await deps.planRoutes({ from: session.position, to }, new Date(now()), {
+        avoidIncidentIds: avoid ? [avoid.incidentId] : [],
+      });
       Object.assign(session, options ? { status: 'choosing', options } : { status: 'failed' });
     } catch (error) {
       if (error instanceof RoutingBusyError) return 'busy';
@@ -179,9 +187,9 @@ export function createDeliveryService(deps: DeliveryDeps) {
     return 'done';
   }
 
-  function routeSecondLeg(session: Session, attempt = 1) {
+  function routeSecondLeg(session: Session, attempt = 1, avoid: DeliveryAlert | null = null) {
     void enqueue(session, async () => {
-      if (!sessions.has(session.id) || (await routeLeg(session)) === 'done') return;
+      if (!sessions.has(session.id) || (await routeLeg(session, avoid)) === 'done') return;
       if (attempt >= MAX_LEG_ATTEMPTS) {
         session.status = 'failed';
         publish(session);
@@ -189,7 +197,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
       }
       const timer = setTimeout(() => {
         retryTimers.delete(timer);
-        routeSecondLeg(session, attempt + 1);
+        routeSecondLeg(session, attempt + 1, avoid);
       }, LEG_RETRY_MS);
       retryTimers.add(timer);
     });
@@ -274,6 +282,7 @@ export function createDeliveryService(deps: DeliveryDeps) {
         summary: null,
         ride: null,
         alert: null,
+        avoiding: null,
         baseline: null,
         queue: Promise.resolve(),
         lastActivityMs: now(),
@@ -341,7 +350,8 @@ export function createDeliveryService(deps: DeliveryDeps) {
         ridden.lengthM += chosen.lengthM * fraction;
         ridden.exposure += chosen.durationS * fraction * chosen.riskScore;
         ridden.nearbyIncidentIds.push(...chosen.nearbyIncidentIds);
-        if ((await routeLeg(session)) === 'busy') routeSecondLeg(session);
+        const avoid = session.alert;
+        if ((await routeLeg(session, avoid)) === 'busy') routeSecondLeg(session, 1, avoid);
         return ok(session);
       }),
 

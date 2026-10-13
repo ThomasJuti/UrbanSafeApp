@@ -238,7 +238,7 @@ describe('route_between con zonas a evitar (RN-13)', () => {
       .execute();
   }
 
-  async function plan(trx: Db, avoidFactors: number[]) {
+  async function plan(trx: Db, avoidFactors: number[], avoidIncidentIds: string[] = []) {
     return queryRoutes(trx, {
       from: point(V.a),
       to: point(V.b),
@@ -246,8 +246,36 @@ describe('route_between con zonas a evitar (RN-13)', () => {
       alphas: [0, 0],
       avoidFactors,
       band: BAND,
+      avoidIncidentIds,
     });
   }
+
+  it('el incidente del aviso se esquiva aunque sea un reporte nuevo y no grave', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      // Un hurto a persona recién reportado: por sí solo no es zona a evitar.
+      await seedHotIncident(trx, { severity: 3, confidence: PARAMS.initialConfidence.community });
+
+      const [, unforced] = await plan(trx, [0, PARAMS.avoidZone.penalty]);
+      const [fastest, safest] = await plan(trx, [0, PARAMS.avoidZone.penalty], [SEED_ID]);
+
+      expect(unforced?.path).toEqual([AT[V.a], AT[V.b]]);
+      expect(fastest?.hotIncidents.map((hot) => hot.id)).toEqual([SEED_ID]);
+      expect(safest?.path).toEqual([AT[V.a], AT[V.d], AT[V.c], AT[V.b]]);
+      expect(safest?.hotIncidents).toEqual([]);
+    });
+  });
+
+  it('un incidente forzado que ya se ocultó (RN-12) no se esquiva', async () => {
+    await withRollback(db, async (trx) => {
+      await insertGraph(trx);
+      await seedHotIncident(trx, { confidence: PARAMS.visibilityThreshold / 2 });
+
+      const [, safest] = await plan(trx, [0, PARAMS.avoidZone.penalty], [SEED_ID]);
+
+      expect(safest?.path).toEqual([AT[V.a], AT[V.b]]);
+    });
+  });
 
   it('la ruta con recargo rodea la zona; la rápida pasa y la lista entre sus hotIncidents', async () => {
     await withRollback(db, async (trx) => {

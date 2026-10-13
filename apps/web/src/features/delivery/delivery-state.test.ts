@@ -35,6 +35,7 @@ function state(overrides: Partial<DeliveryState> = {}): DeliveryState {
     speedMultiplier: 10,
     summary: null,
     alert: null,
+    avoiding: null,
     ...overrides,
   };
 }

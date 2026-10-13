@@ -104,6 +104,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Candidatos.** Al pasar a `riding` se leen una vez. El tick solo recorre esa lista. Un incidente nuevo o actualizado se compara una vez contra las sesiones en camino.
   - **Aviso.** `alert.raised` va solo a la sala privada de la sesión. En `/domiciliario` se muestra el tipo, un punto en el mapa y "Recalcular ruta".
   - **Recalcular.** `POST /api/delivery/sessions/:id/recalculate` solo vale en camino y con un aviso activo. Pausa, calcula las 3 rutas desde la posición actual hasta el destino del tramo y vuelve a la elección. La exposición del resumen suma lo ya recorrido y la ruta nueva; la rápida de referencia sigue siendo la del inicio del tramo.
+  - **Esquivar el aviso (RN-13).** Al recalcular, el incidente del aviso se pasa al ruteo como zona a evitar forzada, y la balanceada y la segura lo rodean. El estado lleva `avoiding` mientras se elige: la web preselecciona la segura y dice "Rutas recalculadas para esquivar el … del aviso", o, si las tres pasan por ahí, que no hay un desvío cercano, con la parada segura más cercana.
   - **Presupuestos.** En `load:demo`, la alerta llegó a los 4,8 s (no cumple 2 s): incluye la espera del insert del reporte. Recalcular usa el mismo cálculo que las 3 rutas, que en ráfaga tampoco entra en 1 s.
 - **Zonas a evitar, explicación y puntos seguros (M5, M6, M8; RN-13).**
   - **Zonas a evitar (RN-13).** `route_between` recibe los tramos a evitar y un recargo (migración `route_between_avoid_zones`). `queryRoutes` los arma en la misma consulta de las 3 rutas: incidentes que cumplen RN-13 en la caja de ruteo, tramos a menos de 150 m (punto) o que intersectan el área, recargo ×(1 + 10) solo en la segura. La caché de rutas incluye el recargo en su llave.
@@ -213,7 +214,7 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
 - Mientras el domiciliario sigue una ruta, alertar cuando haya un incidente reciente adelante en la ruta dentro de un radio definido.
 - Alertar cuando aparezca un incidente nuevo sobre la ruta activa.
 - Un incidente es reciente si entró al sistema (`reportado_en`) en las últimas 6 h **y** ocurrió (`ocurrido_en`) en las últimas 24 h. Así las noticias, que se publican horas después del hecho, también pueden generar alertas.
-- Cada alerta ofrece **Recalcular ruta**, que calcula 3 opciones nuevas desde la posición actual hasta el destino del tramo en curso.
+- Cada alerta ofrece **Recalcular ruta**, que calcula 3 opciones nuevas desde la posición actual hasta el destino del tramo en curso. Las nuevas rutas balanceada y segura esquivan el incidente del aviso (RN-13); si ninguna puede, se dice.
 - Cada alerta se anuncia por voz ("<tipo> reportado a <N> metros adelante", con la distancia redondeada a 50 m) y con vibración. La voz se puede apagar y la preferencia se recuerda en el dispositivo.
 - La alerta muestra la **parada segura más cercana** (CAI/policía o gasolinera 24 h) a la posición actual (M8).
 
@@ -338,6 +339,7 @@ El sistema consume la posición del domiciliario desde una fuente abstracta. En 
   - Un tramo es **cercano** si está a menos de 150 m del punto del incidente, o si intersecta el barrio o el corredor de la vía.
   - En la ruta más segura, el costo de un tramo cercano se multiplica por `1 + penalización`. No es un bloqueo: si no hay otra salida, la ruta pasa.
   - La rápida y la balanceada no llevan penalización. La penalización se suma a la de riesgo (RN-07).
+  - **Al recalcular desde un aviso (M6)**, el incidente del aviso es zona a evitar aunque no cumpla las condiciones de arriba (un reporte nuevo entra con confianza 0,3), mientras siga visible y no sea una localidad. En ese recálculo la balanceada también lleva la penalización: el domiciliario pidió salir de ahí. Así no se depende del recálculo del riesgo, que corre segundos después del reporte.
 
 ### Parámetros iniciales
 

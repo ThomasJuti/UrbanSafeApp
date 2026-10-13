@@ -320,8 +320,13 @@ describe('sesión de entrega (M7, F1)', () => {
     const recalculated = await service.recalculate(id);
     expect(recalculated.ok && recalculated.state.status).toBe('choosing');
     expect(plan.mock.calls.length).toBe(callsAfterChoose + 1);
+    // Las rutas nuevas esquivan el incidente del aviso, y la web sabe cuál es mientras elige.
+    expect(plan.mock.calls.at(-1)?.[2]).toEqual({ avoidIncidentIds: [incident.id] });
+    expect(recalculated.ok && recalculated.state.avoiding).toMatchObject({ incidentId: incident.id, type: 'armed_robbery' });
 
     await service.chooseRoute(id, 'fastest');
+    const chosenAgain = service.get(id);
+    expect(chosenAgain.ok && chosenAgain.state.avoiding).toBeNull();
     advance(LONG_TICK_MS);
     await settle();
     await service.chooseRoute(id, 'fastest');
