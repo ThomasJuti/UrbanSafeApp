@@ -48,6 +48,7 @@ function riding(sessionId: string): DeliveryState {
     speedMultiplier: 10,
     summary: null,
     alert: null,
+    avoiding: null,
   };
 }
 

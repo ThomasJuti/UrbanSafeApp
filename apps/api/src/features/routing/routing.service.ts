@@ -19,6 +19,11 @@ export type RouteAlphas = { fastest: number; balanced: number; safest: number };
 
 // RN-13: el recargo de las zonas a evitar solo lo lleva la ruta segura.
 const DEFAULT_AVOID_FACTORS: RouteAlphas = { fastest: 0, balanced: 0, safest: PARAMS.avoidZone.penalty };
+// Al recalcular desde un aviso también la balanceada rodea las zonas: el domiciliario pidió salir de ahí.
+const ALERT_AVOID_FACTORS: RouteAlphas = { fastest: 0, balanced: PARAMS.avoidZone.penalty, safest: PARAMS.avoidZone.penalty };
+
+// `avoidIncidentIds`: incidentes que se esquivan aunque no cumplan RN-13 (el del aviso que pidió recalcular).
+export type PlanOptions = { avoidIncidentIds?: readonly string[] };
 
 // `db` debe ser un pool propio con el statement_timeout del ruteo ya puesto en la sesión: fijarlo
 // por pedido cuesta dos idas y vueltas más a la base, que con la base en otra región pesan más que
@@ -35,27 +40,37 @@ export function createRoutingService(
   const limit = pLimit(concurrency);
   const alphaList = ROUTE_KINDS.map((kind) => alphas[kind]);
   const avoidList = ROUTE_KINDS.map((kind) => avoidFactors[kind]);
+  const alertAvoidList = ROUTE_KINDS.map((kind) => ALERT_AVOID_FACTORS[kind]);
   const cache = createTtlCache<RouteOption[]>({ ttlMs: PARAMS.routeCache.ttlMs, maxEntries: PARAMS.routeCache.maxEntries });
   let riskVersion = 0;
 
-  function cacheKey(fromId: string, toId: string, band: number): string {
-    return `${riskVersion}:${fromId}:${toId}:${band}:${alphaList.join(',')}:${avoidList.join(',')}`;
+  function cacheKey(fromId: string, toId: string, band: number, avoidIds: readonly string[]): string {
+    return `${riskVersion}:${fromId}:${toId}:${band}:${alphaList.join(',')}:${avoidList.join(',')}:${[...avoidIds].sort().join(',')}`;
   }
 
-  async function planRoutes(request: RouteRequest, now = new Date()): Promise<RouteOption[] | null> {
+  async function planRoutes(request: RouteRequest, now = new Date(), { avoidIncidentIds = [] }: PlanOptions = {}): Promise<RouteOption[] | null> {
     if (limit.pendingCount >= maxQueue) throw new RoutingBusyError();
     const band = timeBandOf(now);
+    const factors = avoidIncidentIds.length > 0 ? alertAvoidList : avoidList;
     return limit(async () => {
       const version = riskVersion;
       const nodes = await nearestVertexIds(db, request.from, request.to);
       if (!nodes) return null;
-      const key = cacheKey(nodes.fromId, nodes.toId, band);
+      const key = cacheKey(nodes.fromId, nodes.toId, band, avoidIncidentIds);
       const cached = version === riskVersion ? cache.get(key) : undefined;
       if (cached) return cached;
 
       let paths: (RoutePath | null)[] = [];
       for (const marginM of PARAMS.routeClipMarginsM) {
-        paths = await queryRoutes(db, { from: request.from, to: request.to, marginM, alphas: alphaList, avoidFactors: avoidList, band });
+        paths = await queryRoutes(db, {
+          from: request.from,
+          to: request.to,
+          marginM,
+          alphas: alphaList,
+          avoidFactors: factors,
+          band,
+          avoidIncidentIds,
+        });
         if (paths.every(Boolean)) break;
       }
       if (!paths.every(Boolean)) return null;

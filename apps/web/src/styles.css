@@ -831,6 +831,32 @@ a.button:focus-visible {
   margin: 0 0 10px;
 }
 
+/* Tras recalcular desde un aviso: verde si alguna ruta lo esquiva, ámbar si no hay desvío. */
+.avoid-notice {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid oklch(0.72 0.17 155 / 0.4);
+  border-radius: var(--radius);
+  background: oklch(0.72 0.17 155 / 0.12);
+  font-size: 14px;
+}
+
+.avoid-notice.warning {
+  border-color: oklch(0.8 0.15 80 / 0.45);
+  background: oklch(0.8 0.15 80 / 0.14);
+}
+
+.avoid-notice p {
+  margin: 0;
+}
+
+.avoid-notice .safe-place-hint {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
 /* Aviso en ruta (M6): ondas tipo radar alrededor del punto del incidente. */
 .alert-radar {
   position: relative;

@@ -56,6 +56,8 @@ export const deliveryStateSchema = z.object({
   summary: deliverySummarySchema.nullable(),
   // Aviso del tramo en curso. Null si no hay, o si ya se pidió recalcular.
   alert: deliveryAlertSchema.nullable(),
+  // El aviso desde el que se recalculó: las rutas ofrecidas lo esquivan (RN-13). Solo mientras se elige.
+  avoiding: deliveryAlertSchema.nullable(),
 });
 export type DeliveryState = z.infer<typeof deliveryStateSchema>;
 

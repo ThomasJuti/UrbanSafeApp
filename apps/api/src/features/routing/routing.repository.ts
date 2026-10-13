@@ -15,6 +15,8 @@ export type RoutePath = {
 };
 
 // `avoidFactors` va alineado con `alphas`: el recargo de RN-13 que lleva cada ruta (0 = ninguno).
+// `avoidIncidentIds` son zonas a evitar forzadas, aunque no cumplan RN-13: el incidente del aviso
+// desde el que el domiciliario pidió recalcular.
 export type RoutesQuery = {
   from: LatLng;
   to: LatLng;
@@ -22,6 +24,7 @@ export type RoutesQuery = {
   alphas: readonly number[];
   avoidFactors: readonly number[];
   band: number;
+  avoidIncidentIds?: readonly string[];
 };
 
 type Row = {
@@ -40,7 +43,7 @@ type Row = {
 // Con velocidad fija, ponderar por longitud es lo mismo que ponderar por tiempo de recorrido (M5).
 export async function queryRoutes(
   db: Db,
-  { from, to, marginM, alphas, avoidFactors, band }: RoutesQuery,
+  { from, to, marginM, alphas, avoidFactors, band, avoidIncidentIds = [] }: RoutesQuery,
 ): Promise<(RoutePath | null)[]> {
   const { low, high } = PARAMS.routeRiskLevels;
   const { minSeverity, minConfidence, radiusM } = PARAMS.avoidZone;
@@ -59,14 +62,19 @@ export async function queryRoutes(
 
   const { rows } = await sql<Row>`
     with hot as (
-      -- RN-13: zonas a evitar. Una localidad es demasiado grande para penalizarla entera.
+      -- RN-13: zonas a evitar, más las forzadas mientras sigan visibles (RN-12). Una localidad es
+      -- demasiado grande para penalizarla entera.
       select i.id, i.type, i.location_kind, i.geom
       from incidents i
-      where i.severity >= ${minSeverity}
-        and i.confidence >= ${Math.max(minConfidence, PARAMS.visibilityThreshold)}
+      where (
+          (i.severity >= ${minSeverity}
+            and i.confidence >= ${minConfidence}
+            and i.reported_at >= ${reportedSince}
+            and i.occurred_at >= ${occurredSince})
+          or i.id = any(${[...avoidIncidentIds]}::uuid[])
+        )
+        and i.confidence >= ${PARAMS.visibilityThreshold}
         and i.location_kind <> 'locality'
-        and i.reported_at >= ${reportedSince}
-        and i.occurred_at >= ${occurredSince}
         and i.geom && ST_MakeEnvelope(${box[0]}, ${box[1]}, ${box[2]}, ${box[3]}, 4326)
     ),
     hot_edges as (
