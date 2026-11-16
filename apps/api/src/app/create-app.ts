@@ -1,4 +1,5 @@
 import { PARAMS } from '@urbansafe/shared';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { createDeliveryRoutes, type DeliveryService } from '../features/delivery';
 import { createIncidentsRoutes } from '../features/incidents';
@@ -19,6 +20,9 @@ export function createApp(deps: {
   routing: RoutingService;
   delivery: DeliveryService;
   clientKey: ClientKey;
+  // Build de la web (apps/web/dist). En producción el API la sirve en el mismo dominio, así
+  // /api y /socket.io no necesitan CORS. En desarrollo la sirve Vite y esto queda vacío.
+  webDir?: string;
 }) {
   const app = new Hono();
   const limited = (name: IpLimitName) =>
@@ -43,6 +47,13 @@ export function createApp(deps: {
   app.route('/api/reports', createReportsRoutes(deps));
   app.route('/api/routes', createRoutingRoutes(deps.routing));
   app.route('/api/delivery', createDeliveryRoutes(deps.delivery));
+
+  if (deps.webDir) {
+    const root = deps.webDir;
+    app.use('*', serveStatic({ root }));
+    // Las rutas de React Router (/domiciliario, /reportar) caen en index.html; /api no.
+    app.get('*', async (c, next) => (c.req.path.startsWith('/api/') ? next() : serveStatic({ root, path: 'index.html' })(c, next)));
+  }
 
   app.onError((error, c) => {
     console.error(error);

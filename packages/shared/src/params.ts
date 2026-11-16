@@ -2,7 +2,13 @@
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const MAP_WINDOW_MS = 7 * DAY_MS;
+const ARTICLE_WINDOW_MS = 7 * DAY_MS;
+// MAP_WINDOW_DAYS (solo en el API) amplía cuántos días de incidentes se ven en el mapa, p. ej. para
+// una demo después de semanas sin ingesta. No cambia la antigüedad máxima de las noticias.
+const mapWindowDays = Number(
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.['MAP_WINDOW_DAYS'],
+);
+const MAP_WINDOW_MS = mapWindowDays > 0 ? mapWindowDays * DAY_MS : ARTICLE_WINDOW_MS;
 
 export const PARAMS = {
   decayTauMs: 3 * DAY_MS,
@@ -69,7 +75,7 @@ export const PARAMS = {
     // M1 pide consultar cada 30–60 minutos.
     intervalMs: 45 * 60 * 1000,
     // Lo publicado hace más que la ventana del mapa ya no se vería (M8), así que no se procesa.
-    maxArticleAgeMs: MAP_WINDOW_MS,
+    maxArticleAgeMs: ARTICLE_WINDOW_MS,
     // Google permite guardar resultados de geocodificación de forma temporal, hasta 30 días.
     geocodeCacheTtlMs: 30 * DAY_MS,
     // Un artículo que falló (LLM o geocodificador caídos) se reintenta en las corridas siguientes.

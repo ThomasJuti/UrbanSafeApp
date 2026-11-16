@@ -7,3 +7,4 @@ coverage/
 supabase/.temp/
 .DS_Store
 *.log
+.codegraph/

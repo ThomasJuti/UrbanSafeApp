@@ -114,6 +114,8 @@ Actualizar esta sección en el mismo cambio que implemente algo del spec. Lo que
   - **Puntos seguros (M6, M8).** `pnpm db:import-safe-places` reemplaza `safe_places` desde Overpass: 236 puntos el 2026-10-09 (224 de policía y 12 gasolineras 24 h). `GET /api/safe-places` con una hora de caché; ambos mapas los dibujan y la alerta muestra el más cercano.
   - **Valor de la ruta segura, vuelto a medir (2026-10-09, `pnpm measure:safe-route`).** 27 pedidos con las dos rutas y 3 fallidos: **0 cumplen (0 %)**, exposición evitada media 1 %, tiempo extra medio 0 %. **No cumple.** Sin incidentes graves recientes en la base, la penalización no se activa y la segura sale igual a la rápida; RN-13 mueve la ruta solo cuando hay una zona a evitar sobre el camino (prueba de integración).
 
+- **Despliegue de la demo (AWS).** Una instancia EC2 en `sa-east-1` con Caddy (HTTPS de sslip.io) delante del API; el API sirve la web compilada con `WEB_DIR`, así la web, `/api` y `/socket.io` comparten dominio. `deploy/setup.sh` monta el servidor con apagado programado (la instancia se termina sola) y `deploy/teardown.sh` borra el resto. Ver el README.
+
 ### Siguiente
 
 - **Valor de la ruta segura.** Con RN-13 también da 0 % (2026-10-09). La medición con α = 5 no llega al 70 %. Se volvió a medir el 2026-10-06 con α 20 y α 50, 30 pedidos cada uno: ninguno cumple (0 %). Con α 20 la media es 4 % menos exposición y 1 % de tiempo extra; con α 50, 3 % y 3 %. α se queda en 5. El riesgo de los tramos es bajo y parecido, y subir α no aparta la ruta segura de la rápida.
@@ -377,7 +379,7 @@ Valores de partida; se ajustan con pruebas sobre rutas reales.
 | Ajustes de confianza | Confirmación +0,15 · Negación −0,2 · Fusión con otra fuente +0,1 · Tope 1,0 | Los reportes falsos pierden peso rápido |
 | Reputación (RN-04) | +0,02 de confianza inicial por punto de saldo · Máximo 0,5 | Unas 10 confirmaciones netas llevan a un reportero al máximo |
 | Umbral de visibilidad (RN-12) | 0,1 | Con 2 negaciones, un reporte comunitario nuevo se oculta |
-| Ventana del mapa (M8) | 7 días por `ocurrido_en` | Igual al horizonte del riesgo reciente; lo más viejo ya casi no pesa (RN-06) |
+| Ventana del mapa (M8) | 7 días por `ocurrido_en`; `MAP_WINDOW_DAYS` la amplía solo en el API (p. ej. para una demo tras semanas sin ingesta) sin cambiar la antigüedad máxima de las noticias | Igual al horizonte del riesgo reciente; lo más viejo ya casi no pesa (RN-06) |
 
 ## 6. Flujos principales
 

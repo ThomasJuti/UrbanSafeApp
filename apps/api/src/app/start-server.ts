@@ -26,6 +26,7 @@ export async function startServer(deps: {
   backgroundJobs: boolean;
   // Detrás de un proxy propio que agrega X-Forwarded-For (ver clientIp).
   trustProxy: boolean;
+  webDir?: string;
   // M1: corre con los trabajos de fondo y solo si están las claves del LLM y del geocodificador.
   newsIngestion?: NewsIngestionConfig;
 }) {
@@ -44,7 +45,7 @@ export async function startServer(deps: {
   });
   const stopTicker = delivery.start();
   const stopAlerts = createAlertService(deps.db).start(bus);
-  const app = createApp({ db: deps.db, bus, routing, delivery, clientKey: clientIp(deps.trustProxy) });
+  const app = createApp({ db: deps.db, bus, routing, delivery, clientKey: clientIp(deps.trustProxy), ...(deps.webDir ? { webDir: deps.webDir } : {}) });
 
   const httpServer = await new Promise<HttpServer>((resolve) => {
     const server = serve({ fetch: app.fetch, port: deps.port }, () => resolve(server as HttpServer));
