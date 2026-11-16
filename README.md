@@ -128,8 +128,8 @@ sequenceDiagram
 
   J->>F: descarga los feeds
   J->>J: descarta lo viejo (>7 días), lo que no menciona delitos y la misma historia repetida
-  J->>DB: registra los artículos (news_articles); los ya vistos se saltan
-  J->>G: título + resumen → {tipo, lugar, hora, relevante?}
+  J->>DB: registra los artículos en news_articles y salta los ya vistos
+  J->>G: título + resumen → tipo, lugar, hora y si es relevante
   J->>C: "Chapinero, Bogotá" → coordenadas o área
   J->>DB: submit_news_incident (deduplica/fusiona en SQL)
   J->>B: incident.created / incident.updated
@@ -184,7 +184,7 @@ sequenceDiagram
   loop cada segundo
     T->>T: avanza todas las sesiones activas
     T->>S: delivery.position → solo a la sala de esa sesión
-    T->>S: alert.raised si hay un candidato a <1 km adelante
+    T->>S: alert.raised si hay un candidato a menos de 1 km adelante
   end
   W->>A: "Recalcular ruta" (desde la alerta) → 3 rutas nuevas que esquivan el aviso
 ```
